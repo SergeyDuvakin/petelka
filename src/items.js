@@ -237,13 +237,13 @@
     outline: { fab: true, post(c2, g) {
       const cat = window.PETELKA_CATALOG, it = cat && cat.items.find(i => i.id === g.def.item), O = it && it.ol; if (!O) return;
       const s = g.s, map = g.olMap; if (!map) return;
-      const pts = O.p.map(map), path = new Path2D();
-      pts.forEach((p, i) => i ? path.lineTo(p[0], p[1]) : path.moveTo(p[0], p[1])); path.closePath();
-      c2.save(); c2.globalCompositeOperation = 'destination-in'; c2.filter = `blur(${Math.max(0.5, s * 0.04)}px)`; c2.fillStyle = '#000'; c2.fill(path); c2.restore();
+      const path = new Path2D();
+      for (const L of (O.pp || [O.p])) { L.map(map).forEach((p, i) => i ? path.lineTo(p[0], p[1]) : path.moveTo(p[0], p[1])); path.closePath(); }
+      c2.save(); c2.globalCompositeOperation = 'destination-in'; c2.filter = `blur(${Math.max(0.5, s * 0.04)}px)`; c2.fillStyle = '#000'; c2.fill(path, 'evenodd'); c2.restore();
       c2.save(); c2.globalCompositeOperation = 'source-atop'; c2.lineJoin = 'round'; c2.filter = `blur(${Math.max(1, s * 0.35)}px)`;     // объём: мягкая тень у края, без линии
       c2.strokeStyle = 'rgba(120,50,80,0.16)'; c2.lineWidth = s * 1.2; c2.stroke(path); c2.restore();
       const Y = (c) => c === 'acc' ? g.Yacc : c === 'main' || !c ? g.Ymain : P.yarn(c);
-      c2.save(); c2.clip(path);
+      c2.save(); c2.clip(path, 'evenodd');
       for (const sm of (O.seams || [])) ST.yarnStroke(c2, sm.map(map), s * (O.sw || 0.17), Y(O.scol || O.col), { shadow: false, dim: O.sdim == null ? 0.35 : O.sdim });
       if (O.knots) { const [kx, ky] = map(O.knots), kr = O.knots[2] * s, Yk = Y(O.kcol || 'acc');   // серединка: узелки
         c2.save(); c2.fillStyle = 'rgba(120,60,70,0.22)'; c2.beginPath(); c2.ellipse(kx, ky + kr * 0.12, kr * 1.08, kr * 1.02, 0, 0, 6.283); c2.fill(); c2.restore();
@@ -423,7 +423,9 @@
       c2.fillStyle = 'rgba(255,240,226,0.92)'; c2.save(); c2.translate(cxm, yT + s * 0.02); c2.scale(1, 0.42); c2.beginPath(); const hs = s * 0.28; c2.moveTo(0, hs * 0.9); c2.bezierCurveTo(-hs * 1.6, -hs * 0.2, -hs * 0.6, -hs * 1.3, 0, -hs * 0.4); c2.bezierCurveTo(hs * 0.6, -hs * 1.3, hs * 1.6, -hs * 0.2, 0, hs * 0.9); c2.fill(); c2.restore();
       c2.restore(); } },
     strap: { post(c2, g) { const s = g.s, x = g.padX + g.W * s - s * 0.55, y = (g.yTop + g.castEdge) / 2; ST.yarnStroke(c2, [[x - s * 0.5, y], [x, y - s * 0.05], [x + s * 0.55, y]], s * 0.34, g.Yacc, {}); button(c2, x + s * 0.05, y, s * 0.26, [236, 222, 208], null); } },
-    loop_corner: { post(c2, g) { const s = g.s, x = g.padX + s * 0.25, y = g.yTop + s * 0.1; ST.yarnStroke(c2, [[x + s * 0.3, y + s * 0.05], [x - s * 0.15, y - s * 0.55], [x - s * 0.75, y - s * 0.6], [x - s * 0.7, y - s * 0.05], [x - s * 0.05, y + s * 0.25]], s * 0.2, g.Yacc, {}); } },
+    loop_corner: { post(c2, g) { const s = g.s; let x = g.padX + s * 0.25, y = g.yTop + s * 0.1;
+      if (g.olPts) { const p = g.olPts.reduce((a, q) => (q[0] + q[1] < a[0] + a[1] ? q : a)); x = p[0] + s * 0.2; y = p[1] + s * 0.2; }   // скруглённый угол: петелька на самом срезе
+      ST.yarnStroke(c2, [[x + s * 0.3, y + s * 0.05], [x - s * 0.15, y - s * 0.55], [x - s * 0.75, y - s * 0.6], [x - s * 0.7, y - s * 0.05], [x - s * 0.05, y + s * 0.25]], s * 0.2, g.Yacc, {}); } },
     loop_top: { post(c2, g) { const s = g.s, x = g.colX(0), y = g.topY(0) + s * 0.1; ST.yarnStroke(c2, [[x + s * 0.3, y + s * 0.05], [x + s * 0.1, y - s * 0.7], [x - s * 0.4, y - s * 0.8], [x - s * 0.45, y - s * 0.2], [x - s * 0.05, y + s * 0.15]], s * 0.2, g.Yacc, {}); } },
     cord_loop: { post(c2, g) { const s = g.s, x = g.padX + g.W * s - s * 0.3, y = g.yTop + s * 0.15; ST.yarnStroke(c2, [[x - s * 0.25, y], [x + s * 0.35, y - s * 0.9], [x + s * 1.0, y - s * 1.0], [x + s * 1.05, y - s * 0.35], [x + s * 0.2, y + s * 0.15]], s * 0.18, g.Yacc, {});
       const bx = x + s * 1.0, by = y - s * 0.98, gr = c2.createRadialGradient(bx - s * 0.06, by - s * 0.08, 1, bx, by, s * 0.2); gr.addColorStop(0, '#FFFFFF'); gr.addColorStop(1, rgb(g.Yacc.cBase)); c2.fillStyle = gr; c2.beginPath(); c2.arc(bx, by, s * 0.2, 0, 6.283); c2.fill(); } },
@@ -506,7 +508,7 @@
         c2.fillStyle = 'rgba(255,255,255,0.9)'; c2.beginPath(); c2.arc(x + (dx - r * 0.35) * s, y + (dy - r * 0.35) * s, r * s * 0.25, 0, 6.283); c2.fill(); } c2.restore(); } },
     cherry_top: { post(c2, g) { const s = g.s, [x, y] = topCenter(g); ST.yarnStroke(c2, [[x, y - s * 0.3], [x + s * 0.15, y - s * 0.9], [x + s * 0.45, y - s * 1.25]], s * 0.12, BROWN, { shadow: false }); cherryBall(c2, x, y - s * 0.15, s * 0.58); } },
     waffle: { fab: true, post(c2, g) { const s = g.s; let ra = 0; for (let r = 0; r < g.H; r++) { let full = true; for (let c = 0; c < g.W; c++) {} } 
-      const yT = g.yOf(6) - g.h * 0.5; c2.save(); c2.globalCompositeOperation = 'source-atop'; c2.beginPath(); c2.rect(g.padX - s, yT, g.W * s + 2 * s, g.castEdge - yT + s); c2.clip();
+      const yT = g.yOf(6) - g.h * 0.5, zp = g.zonePaths && g.zonePaths.find(z => z.ch === 'a'); c2.save(); c2.globalCompositeOperation = 'source-atop'; if (zp) c2.clip(zp.path, 'evenodd'); else { c2.beginPath(); c2.rect(g.padX - s, yT, g.W * s + 2 * s, g.castEdge - yT + s); c2.clip(); }
       c2.strokeStyle = 'rgba(120,70,40,0.42)'; c2.lineWidth = Math.max(1, s * 0.11); for (let k = -12; k < 12; k++) { c2.beginPath(); c2.moveTo(g.padX + k * s * 1.1, yT); c2.lineTo(g.padX + k * s * 1.1 + s * 6, yT + s * 6); c2.stroke(); c2.beginPath(); c2.moveTo(g.padX + k * s * 1.1, yT); c2.lineTo(g.padX + k * s * 1.1 - s * 6, yT + s * 6); c2.stroke(); }
       c2.restore(); } },
     gems: { post(c2, g) { const s = g.s, tips = [0, Math.floor(g.W / 2), g.W - 1], cols = [[246, 150, 176], [150, 200, 230], [170, 220, 190]];
@@ -551,17 +553,46 @@
         g.olMap = ([px, py]) => [padX + px * s, top + (bot - top) * py / H];
         const near = pts.filter(p => Math.abs(p[0] - g.cx) < s * 0.45);
         if (near.length) { const t = near.reduce((a, b) => b[1] < a[1] ? b : a), b = near.reduce((a, c) => c[1] > a[1] ? c : a);
-          g.olTop = [g.cx, t[1]]; g.olBot = [g.cx, b[1]]; g.castEdge = b[1] + 0.1 * s; } } }
+          g.olTop = [g.cx, t[1]]; g.olBot = [g.cx, b[1]]; g.castEdge = b[1] + 0.1 * s; }
+        g.olZones = O.z || null;
+        // v3.3: верх каждой колонки — по гладкому контуру (стебельки вишенок, камни короны, труба домика крепятся к срезу, а не к ступеньке)
+        const all = [].concat(...(O.pp || [O.p]).map(L => L.map(g.olMap))), topY0 = g.topY; g.olPts = all;
+        g.topY = (c) => { const x = colX(c); let b = Infinity; for (const p of all) if (Math.abs(p[0] - x) < s * 0.5 && p[1] < b) b = p[1]; return b < Infinity ? b : topY0(c); }; } }
     const mk = () => { const c = document.createElement('canvas'); c.width = Math.ceil(w * dpr); c.height = Math.ceil(hh * dpr); const x = c.getContext('2d'); x.scale(dpr, dpr); return [c, x]; };
     const [fab, x] = mk();
     const [pre, px] = mk(); for (const d of deco) if (DECO[d].pre) DECO[d].pre(px, g);
-    for (let c = 0; c < W; c++) if (!none(0, c)) ST.drawSprite(x, colX(c), yOf(-1) - h * 0.45, s, h, castCode, 1 + (c * 13) % 4, dpr);
-    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { const e = getE(r, c); if (e) ST.drawSprite(x, colX(c), yOf(r), s, h, e.code, e.seed, dpr, e.kind); }
-    drawCables(x, def, tex, getE, colX, yOf, s, h, () => true);
-    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { const e = getE(r, c); if (e && e.kind === 'b') ST.drawBobble(x, colX(c), yOf(r) + 0.42 * h, 0.4 * s, P.yarn(e.code), 1, e.seed); }
-    edge(x, castY, P.yarn(castCode), padX, s, W, (c) => !none(0, c));
-    // закрытые петли: по верхней петле каждой колонки
-    for (let c = 0; c < W; c++) { const r = topRow(c); const e = getE(r, c); if (e) edge(x, yOf(r) + h * 0.05, P.yarn(e.code), padX, s, W, (cc) => cc === c); }
+    const drawFab = (x, getE) => {
+      for (let c = 0; c < W; c++) if (!none(0, c)) ST.drawSprite(x, colX(c), yOf(-1) - h * 0.45, s, h, castCode, 1 + (c * 13) % 4, dpr);
+      for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { const e = getE(r, c); if (e) ST.drawSprite(x, colX(c), yOf(r), s, h, e.code, e.seed, dpr, e.kind); }
+      drawCables(x, def, tex, getE, colX, yOf, s, h, () => true);
+      for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { const e = getE(r, c); if (e && e.kind === 'b') ST.drawBobble(x, colX(c), yOf(r) + 0.42 * h, 0.4 * s, P.yarn(e.code), 1, e.seed); }
+      edge(x, castY, P.yarn(castCode), padX, s, W, (c) => !none(0, c));
+      // закрытые петли: по верхней петле каждой колонки
+      for (let c = 0; c < W; c++) { const r = topRow(c); const e = getE(r, c); if (e) edge(x, yOf(r) + h * 0.05, P.yarn(e.code), padX, s, W, (cc) => cc === c); }
+    };
+    const ZN = g.olMap && g.olZones;
+    if (!ZN || !ZN.length) drawFab(x, getE);
+    else {
+      // v3.3: граница цветовой зоны внутри фигурки — гладкая: полотно «снаружи зоны» и «в зоне» рисуется целиком
+      // своим цветом и сводится по контуру зоны с мягким краем (как внешний край — ровный срез, без линии)
+      const tmpC = document.createElement('canvas'); tmpC.width = fab.width; tmpC.height = fab.height; const tx = tmpC.getContext('2d');
+      const regs = ZN.map(z => { const path = new Path2D(); for (const L of z.pp) L.map(g.olMap).forEach((p, i) => i ? path.lineTo(p[0], p[1]) : path.moveTo(p[0], p[1])), path.closePath(); return path; });
+      g.zonePaths = ZN.map((z, i) => ({ ch: z.ch, path: regs[i] }));
+      const inReg = (k, r, c) => tx.isPointInPath(regs[k], colX(c) * dpr, yOf(r) * dpr, 'evenodd');
+      const cnt = ZN.map(() => new Map()), base = new Map();
+      tx.setTransform(dpr, 0, 0, dpr, 0, 0);   // isPointInPath: путь в CSS-пикселях через трансформацию, точка — в пикселях холста
+      for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { const e = getE(r, c); if (!e) continue; const k0 = e.code.split('@')[0]; const k = ZN.findIndex((z, i) => inReg(i, r, c)); const M = k < 0 ? base : cnt[k]; M.set(k0, (M.get(k0) || 0) + 1); }
+      const top = (M) => [...M.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0])[0];
+      const bc = top(base), zc = cnt.map(top), live = zc.map(c => c && bc && c !== bc);
+      const swap = (from, to) => (r, c) => { const e = getE(r, c); if (!e) return e; const parts = e.code.split('@'); if (from.includes(parts[0])) { parts[0] = to; return Object.assign({}, e, { code: parts.join('@') }); } return e; };
+      tx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawFab(x, swap(zc.filter((c, i) => live[i]), bc));
+      ZN.forEach((z, i) => { if (!live[i]) return;
+        tx.setTransform(1, 0, 0, 1, 0, 0); tx.clearRect(0, 0, tmpC.width, tmpC.height); tx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        drawFab(tx, swap([bc], zc[i]));
+        tx.save(); tx.globalCompositeOperation = 'destination-in'; tx.filter = `blur(${Math.max(0.4, s * 0.035)}px)`; tx.fillStyle = '#000'; tx.fill(regs[i], 'evenodd'); tx.restore();
+        x.save(); x.setTransform(1, 0, 0, 1, 0, 0); x.drawImage(tmpC, 0, 0); x.restore(); });
+    }
     for (const d of deco) if (DECO[d].post && DECO[d].fab) DECO[d].post(x, g, fab);
     const [full, fx] = mk();
     fx.drawImage(pre, 0, 0, w, hh); fx.drawImage(fab, 0, 0, w, hh);
