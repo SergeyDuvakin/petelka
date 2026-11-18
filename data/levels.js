@@ -110,7 +110,7 @@ window.PETELKA_LEVELS = [
  {
   "id": 4,
   "item": "scarf",
-  "name": "Шарф «Звёздочка» с блестящей каймой",
+  "name": "Шарф «Звёздочка»",
   "theme": "pastel",
   "width": 7,
   "height": 8,
