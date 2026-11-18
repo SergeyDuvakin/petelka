@@ -17,7 +17,7 @@
   });
   const LEVELS = qs.has('demo') && window.PETELKA_DEMO ? window.PETELKA_DEMO : window.PETELKA_LEVELS;
   const SAVE_KEY = qs.has('demo') ? 'petelka.demo' : 'petelka.m0';
-  const save = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ level: G.levelIdx, wardrobe: G.wardrobeCount, sound: A.enabled, items: G.items, gs: G.gs })); } catch (e) {} };
+  const save = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ level: G.levelIdx, wardrobe: G.wardrobeCount, sound: A.enabled, items: G.items, gs: Object.assign({}, G.gs, { snap: undefined }) })); } catch (e) {} };
   // особая вещь: уровень и текст хранятся в data/x.js в закодированном виде
   const GIFT = (() => { try {
     const b = atob(window.PETELKA_X || ''); if (!b) return null;
@@ -274,11 +274,13 @@
     // адаптивное качество: если кадр стабильно > 22 мс — снижаем плотность пикселей до 1.5 (а потом 1.25)
     G.perf = (G.perf || []); G.perf.push(dt); if (G.perf.length > 120) G.perf.shift();
     if (G.perf.length === 120 && !document.hidden) { const avg = G.perf.reduce((a, b) => a + b, 0) / 120; if (avg > 0.022 && (G.dprCap || 2) > 1.25) { G.dprCap = (G.dprCap || 2) > 1.5 ? 1.5 : 1.25; G.perf = []; layout(); } }
-    dt = Math.min(dt, 1 / 20);
+    dt = Math.max(0, Math.min(dt || 0, 1 / 20));          // iOS после сворачивания может отдать отрицательный/NaN шаг
     if (G.paused) { dt = G.manual; G.manual = 0; } else dt *= SPEED;
-    step(dt);
-    render();
-    requestAnimationFrame(frame);
+    if (window.innerWidth !== G.W || window.innerHeight !== G.H || ((G.vpTick = (G.vpTick || 0) + 1) % 30 === 0)) checkViewport();
+    requestAnimationFrame(frame);           // следующий кадр — заранее: ошибка в отрисовке не должна «замораживать» игру на полпути анимации
+    try { step(dt); render(); }
+    catch (e) { if (!G.errLogged) { G.errLogged = true; console.error('petelka frame', e); }
+      try { ctx.reset ? ctx.reset() : null; } catch (e2) {} ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.filter = 'none'; ctx.globalCompositeOperation = 'source-over'; }
   }
   function step(dt) {
     G.now += dt; const v = G.vis; if (!v) return;
@@ -350,13 +352,13 @@
     ctx.fillStyle = fill; ctx.fill(); if (edge) { ctx.strokeStyle = edge; ctx.lineWidth = 1; ctx.stroke(); }
   }
   const panelCache = new Map();
-  function panel(x, y, w, h, r = 18) { // мягкая тень дорогая — панель кэшируется по размеру
-    const key = Math.round(w) + 'x' + Math.round(h) + 'r' + r + '@' + G.dpr; let c = panelCache.get(key); const m = 24;
+  function panel(x, y, w, h, r = 18, solid = false) { // мягкая тень дорогая — панель кэшируется по размеру; solid — непрозрачная (шкаф, карточка)
+    const key = Math.round(w) + 'x' + Math.round(h) + 'r' + r + (solid ? 's' : '') + '@' + G.dpr; let c = panelCache.get(key); const m = 24;
     if (!c) {
       c = document.createElement('canvas'); c.width = (w + m * 2) * G.dpr; c.height = (h + m * 2) * G.dpr;
       const x2 = c.getContext('2d'); x2.scale(G.dpr, G.dpr);
       x2.save(); x2.shadowColor = 'rgba(150,90,110,0.18)'; x2.shadowBlur = 14; x2.shadowOffsetY = 4;
-      x2.beginPath(); x2.roundRect(m, m, w, h, r); x2.fillStyle = 'rgba(255,247,249,0.86)'; x2.fill(); x2.restore();
+      x2.beginPath(); x2.roundRect(m, m, w, h, r); x2.fillStyle = solid ? 'rgb(255,247,249)' : 'rgba(255,247,249,0.86)'; x2.fill(); x2.restore();
       x2.beginPath(); x2.roundRect(m + 0.5, m + 0.5, w - 1, h - 1, r); x2.strokeStyle = 'rgba(232,180,196,0.55)'; x2.lineWidth = 1; x2.stroke();
       panelCache.set(key, c);
     }
@@ -437,7 +439,10 @@
   function drawHintBar() {
     const L = G.level, v = G.vis; if (v.row >= L.H) return;
     const s = G.s, y = G.hintY, h = 44;
-    panel(G.fx - 8, y, L.W * s + 16, h, 16);
+    const px = Math.max(4, G.fx - 8), pw = Math.min(G.W - 8, L.W * s + 16);
+    panel(px, y, pw, h, 16);
+    ctx.save(); ctx.beginPath(); ctx.roundRect(px + 1, y + 1, pw - 2, h - 2, 15); ctx.clip();   // петли не вылезают за полоску
+    const ps = Math.min(s * 0.576, 25, (h - 14) / 0.78 / 1.3), ph = ps * 0.78;               // размер петли — под высоту полоски
     const r = v.row;
     for (let c = 0; c < L.W; c++) {
       const cell = L.cells[r][c]; const x = colX(c), cy = y + h / 2;
@@ -462,15 +467,15 @@
         ctx.setLineDash([]); text('?', x, cy - 1, 13, 'rgba(160,100,120,0.9)', 'Nunito', 800);
       } else if (cell.opts.length > 1) {
         ctx.save(); ctx.beginPath(); ctx.rect(x - s * 0.5, cy - 16, s * 0.5, 34); ctx.clip();
-        ST.draw(ctx, x, cy - 6, { s: s * k * 1.6, h: G.h * k * 1.6, yarn: Y[cell.opts[0]], seed: 1, progress: 1, part: 'legs', kind: kindAt(r, c) }); ctx.restore();
+        ST.draw(ctx, x, cy - ph * 0.55, { s: ps, h: ph, yarn: Y[cell.opts[0]], seed: 1, progress: 1, part: 'legs', kind: kindAt(r, c) }); ctx.restore();
         ctx.save(); ctx.beginPath(); ctx.rect(x, cy - 16, s * 0.5, 34); ctx.clip();
-        ST.draw(ctx, x, cy - 6, { s: s * k * 1.6, h: G.h * k * 1.6, yarn: Y[cell.opts[1]], seed: 1, progress: 1, part: 'legs', kind: kindAt(r, c) }); ctx.restore();
+        ST.draw(ctx, x, cy - ph * 0.55, { s: ps, h: ph, yarn: Y[cell.opts[1]], seed: 1, progress: 1, part: 'legs', kind: kindAt(r, c) }); ctx.restore();
       } else {
-        ST.draw(ctx, x, cy - 6, { s: s * k * 1.6, h: G.h * k * 1.6, yarn: Y[cell.opts[0]], seed: 1, progress: 1, part: 'legs', kind: kindAt(r, c) });
+        ST.draw(ctx, x, cy - ph * 0.55, { s: ps, h: ph, yarn: Y[cell.opts[0]], seed: 1, progress: 1, part: 'legs', kind: kindAt(r, c) });
       }
       if (knitted) { ctx.restore(); ctx.save(); ctx.strokeStyle = 'rgba(176,116,136,0.75)'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(x - 5, cy + 1); ctx.lineTo(x - 1, cy + 5); ctx.lineTo(x + 6, cy - 4); ctx.stroke(); }
       ctx.restore();
-    }
+    }  ctx.restore();
   }
   function nextVisCol() { const L = G.level, v = G.vis, r = v.row; for (let c = L.W - 1; c >= 0; c--) { if (L.cells[r][c].none) continue; const e = v.st[r] && v.st[r][c]; if (!e || e.unknitT0) return c; } return -1; }
 
@@ -672,6 +677,14 @@
   }
 
   // ---------- изделие готово ----------
+  // сохранённые цвета петель подходят к схеме? (после обновления генератора размеры уровней могли поменяться)
+  function codesFit(def, codes) {
+    if (!codes || !def || !Array.isArray(codes) || codes.length !== def.height) return false;
+    const rows = def.rows.map(r => r.trim().split(/\s+/));
+    for (let r = 0; r < def.height; r++) { const cr = codes[r]; if (!Array.isArray(cr) || cr.length !== def.width) return false;
+      for (let c = 0; c < def.width; c++) if ((rows[r][c] === '-') !== !cr[c]) return false; }
+    return true;
+  }
   function renderDef(def, s, dpr, codes) {
     const rows = def.rows.map(r => r.trim().split(/\s+/)); const tex = def.tex ? def.tex.map(r => r.trim().split(/\s+/)) : null;
     const first = def.balls[0].color; const idx = LEVELS.indexOf(def);
@@ -748,6 +761,7 @@
   const thumbCache = new Map();
   function thumb(def, codes, size) {
     const key = def.id + '|' + (codes ? 'k' : 'g') + '|' + size + '@' + G.dpr; let c = thumbCache.get(key); if (c) return c;
+    if (!codesFit(def, codes)) codes = null;
     const s = size, R = renderDef(def, s, G.dpr, codes ? codes.map(r => r.map(x => x || 'K')) : null);
     c = R.full; c._w = R.w; c._h = R.h; thumbCache.set(key, c); return c;
   }
@@ -759,7 +773,7 @@
     const x0 = 14, y0 = G.st + 8, pw = G.W - 28, ph = G.H - G.st - 8 - G.sb - 10;
     w.y0 = y0; w.y1 = y0 + ph; w.cx = x0 + pw - 28; w.cy = y0 + 30;
     ctx.save(); ctx.globalAlpha = k; ctx.translate(0, (1 - k) * 40);
-    panel(x0, y0, pw, ph, 26);
+    panel(x0, y0, pw, ph, 26, true);
     text('Шкаф', G.W / 2, y0 + 32, 32, '#A0607A', 'Marck', 400);
     const total = CAT.items.length, gotItems = new Set(G.items.map(i => i.item)).size, gotCw = new Set(G.items.map(i => i.item + '/' + i.cw)).size, allCw = CAT.items.reduce((a, i) => a + i.cw.length, 0);
     text(`${gotItems} из ${total} вещей · ${gotCw} из ${allCw} расцветок`, G.W / 2, y0 + 60, 13, TH.textSoft, 'Nunito', 700);
@@ -804,7 +818,7 @@
     const c = G.card, k = E.outCubic(c.shown); const L = G.level;
     ctx.fillStyle = `rgba(110,60,80,${0.22 * k})`; ctx.fillRect(0, 0, G.W, G.H);
     ctx.save(); ctx.globalAlpha = k; ctx.translate(0, (1 - k) * 30);
-    panel(c.x, c.y, c.w, c.h, 26);
+    panel(c.x, c.y, c.w, c.h, 26, true);
     text('Готово!', G.W / 2, c.y + 40, 34, '#A0607A', 'Marck', 400);
     text(L.def.name, G.W / 2, c.y + 74, 17, TH.text, 'Nunito', 800);
     const sn = c.snap; const maxW = c.w - 90, maxH = 180; const sc = Math.min(maxW / sn._w, maxH / sn._h);
@@ -871,7 +885,7 @@
   // записка: листок разворачивается, текст появляется от руки
   function openNote() {
     if (!GIFT) return; G.note = { t0: G.now, done: false, chars: 0, closing: 0 };
-    const sn = G.gs.snap || (G.gs.codes ? (() => { const R = renderDef(GIFT.lv, 14, G.dpr, G.gs.codes.map(r => r.map(x => x || 'K'))); const c = R.full; c._w = R.w; c._h = R.h; return c; })() : null);
+    const sn = G.gs.snap || (GIFT ? (() => { const cd = codesFit(GIFT.lv, G.gs.codes) ? G.gs.codes.map(r => r.map(x => x || 'K')) : null; const R = renderDef(GIFT.lv, 14, G.dpr, cd); const c = R.full; c._w = R.w; c._h = R.h; return c; })() : null);
     G.note.snap = sn; A.whoosh && A.whoosh();
   }
   function noteLayout() {
@@ -929,16 +943,34 @@
   cv.addEventListener('pointerup', (e) => { const w = G.ward; if (!w || !w.drag) return; const moved = w.drag.moved; w.drag = null; if (!moved) { w.vel = 0; onTap(e.clientX, e.clientY); } });
   cv.addEventListener('wheel', (e) => { if (G.ward) { G.ward.scroll += e.deltaY; } }, { passive: true });
   document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
-  window.addEventListener('resize', layout);
+  // iOS (PWA с экрана «Домой»): размеры окна и safe-area устанавливаются не сразу — пересчитываем при любом изменении
+  let vpKey = '';
+  function checkViewport(force) {
+    const si = safeInsets(), k = window.innerWidth + 'x' + window.innerHeight + ':' + si.t + ',' + si.b + '@' + (window.devicePixelRatio || 1);
+    if (force || k !== vpKey) { vpKey = k; layout(); }
+  }
+  window.addEventListener('resize', () => checkViewport());
+  window.addEventListener('orientationchange', () => { checkViewport(); setTimeout(() => checkViewport(), 300); });
+  window.addEventListener('pageshow', () => checkViewport());
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => checkViewport());
+  [50, 250, 700, 1500, 3000].forEach(ms => setTimeout(() => checkViewport(), ms));
   const saved = load();
   if (saved && saved.sound === false) A.setEnabled(false);
   if (saved) { G.wardrobeCount = saved.wardrobe || 0; G.items = Array.isArray(saved.items) ? saved.items : []; if (saved.gs) G.gs = Object.assign(G.gs, saved.gs); }
+  // миграция прогресса со старых версий: вещь ссылается на уровень, где теперь другая вещь/размер — перепривязать, цвета петель сбросить
+  G.items = G.items.filter(x => x && x.item && CAT.items.some(i => i.id === x.item)).map(x => {
+    let def = LEVELS.find(l => l.id === x.lv);
+    if (!def || def.item !== x.item) { def = LEVELS.find(l => l.item === x.item && l.cw === x.cw) || LEVELS.find(l => l.item === x.item); return def ? { lv: def.id, item: x.item, cw: x.cw, codes: null } : null; }
+    return codesFit(def, x.codes) ? x : Object.assign({}, x, { codes: null });
+  }).filter(Boolean);
+  if (G.gs.codes && GIFT && !codesFit(GIFT.lv, G.gs.codes)) G.gs.codes = null;
+  if (G.gs.snap && !(G.gs.snap instanceof HTMLCanvasElement)) delete G.gs.snap;   // canvas в JSON превращался в {}
   let startIdx = saved ? clamp(saved.level | 0, 0, LEVELS.length - 1) : 0;
   if (qs.get('level')) startIdx = clamp(parseInt(qs.get('level'), 10) - 1, 0, LEVELS.length - 1);
-  layout(); startLevel(startIdx);
+  checkViewport(true); startLevel(startIdx);
   const fontsReady = (document.fonts && document.fonts.load) ? Promise.all([document.fonts.load('400 30px "Marck Script"', 'Петелька'), document.fonts.load('700 14px Nunito', 'Ряд')]) : Promise.resolve();
-  fontsReady.catch(() => {}).then(() => { G.fontsReady = true; });
-  requestAnimationFrame((t) => { lastT = t; requestAnimationFrame(frame); });
+  fontsReady.catch(() => {}).then(() => { G.fontsReady = true; checkViewport(true); });
+  requestAnimationFrame((t) => { lastT = t; checkViewport(); requestAnimationFrame(frame); });
   if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !qs.has('nosw')) navigator.serviceWorker.register('sw.js').catch(() => {});
 
   // ---------- отладочные хуки ----------
