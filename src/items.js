@@ -207,7 +207,7 @@
     c2.save(); c2.setTransform(1, 0, 0, 1, 0, 0); c2.drawImage(t, 0, 0); c2.restore();
   }
   const GREEN = { cBase: [126, 168, 120], cLight: [176, 208, 160], cDark: [84, 122, 86] }, BROWN = { cBase: [150, 108, 84], cLight: [192, 152, 122], cDark: [104, 72, 56] };
-  function topCenter(g) { let best = -1, cs = []; for (let c = 0; c < g.W; c++) { const r = g.topRow(c); if (r > best) { best = r; cs = [c]; } else if (r === best) cs.push(c); }
+  function topCenter(g) { if (g.olTop) return [g.olTop[0], g.olTop[1] + 0.12 * g.s]; let best = -1, cs = []; for (let c = 0; c < g.W; c++) { const r = g.topRow(c); if (r > best) { best = r; cs = [c]; } else if (r === best) cs.push(c); }
     return [cs.reduce((a, c) => a + g.colX(c), 0) / cs.length, g.yOf(best) - 0.45 * g.h]; }
   function holes(g) { const { W, H } = g, m = (r, c) => r >= 0 && r < H && c >= 0 && c < W && !g.none(r, c), out = [];
     for (let c = 0; c < W; c++) for (let r = 0; r < H; r++) { if (m(r, c)) continue; let L = false, R = false; for (let k = c - 1; k >= 0; k--) if (m(r, k)) { L = true; break; } for (let k = c + 1; k < W; k++) if (m(r, k)) { R = true; break; }
@@ -236,22 +236,21 @@
     // обвязка фигурки: полотно обрезается по гладкому контуру (catalog.ol), край — вязаный шнур, внутри — швы-вышивка
     outline: { fab: true, post(c2, g) {
       const cat = window.PETELKA_CATALOG, it = cat && cat.items.find(i => i.id === g.def.item), O = it && it.ol; if (!O) return;
-      const s = g.s, top = g.yOf(g.H - 1) + 0.05 * g.h, bot = g.castEdge - 0.12 * g.h;
-      const map = ([x, y]) => [g.padX + x * s, top + (bot - top) * y / g.H];
+      const s = g.s, map = g.olMap; if (!map) return;
       const pts = O.p.map(map), path = new Path2D();
       pts.forEach((p, i) => i ? path.lineTo(p[0], p[1]) : path.moveTo(p[0], p[1])); path.closePath();
-      c2.save(); c2.globalCompositeOperation = 'destination-in'; c2.fillStyle = '#000'; c2.fill(path); c2.restore();
-      c2.save(); c2.globalCompositeOperation = 'source-atop'; c2.lineJoin = 'round';     // объём: край чуть темнее, к центру светлее
-      c2.strokeStyle = 'rgba(120,50,80,0.12)'; c2.lineWidth = s * 1.3; c2.stroke(path);
-      c2.strokeStyle = 'rgba(120,50,80,0.12)'; c2.lineWidth = s * 0.6; c2.stroke(path); c2.restore();
+      c2.save(); c2.globalCompositeOperation = 'destination-in'; c2.filter = `blur(${Math.max(0.5, s * 0.04)}px)`; c2.fillStyle = '#000'; c2.fill(path); c2.restore();
+      c2.save(); c2.globalCompositeOperation = 'source-atop'; c2.lineJoin = 'round'; c2.filter = `blur(${Math.max(1, s * 0.35)}px)`;     // объём: мягкая тень у края, без линии
+      c2.strokeStyle = 'rgba(120,50,80,0.16)'; c2.lineWidth = s * 1.2; c2.stroke(path); c2.restore();
       const Y = (c) => c === 'acc' ? g.Yacc : c === 'main' || !c ? g.Ymain : P.yarn(c);
+      c2.save(); c2.clip(path);
       for (const sm of (O.seams || [])) ST.yarnStroke(c2, sm.map(map), s * (O.sw || 0.17), Y(O.scol || O.col), { shadow: false, dim: O.sdim == null ? 0.35 : O.sdim });
       if (O.knots) { const [kx, ky] = map(O.knots), kr = O.knots[2] * s, Yk = Y(O.kcol || 'acc');   // серединка: узелки
         c2.save(); c2.fillStyle = 'rgba(120,60,70,0.22)'; c2.beginPath(); c2.ellipse(kx, ky + kr * 0.12, kr * 1.08, kr * 1.02, 0, 0, 6.283); c2.fill(); c2.restore();
         const ring = [[0, 0, 0.42]]; for (let i = 0; i < 7; i++) { const a = i / 7 * 6.283 + 0.3; ring.push([Math.cos(a) * 0.62, Math.sin(a) * 0.62, 0.36]); }
         ring.forEach(([dx, dy, rr], i) => ST.drawBobble(c2, kx + dx * kr, ky + dy * kr, rr * kr, Yk, 1, 1 + i % 4)); }
-      const cl = [...pts, pts[0], pts[1]];
-      ST.yarnStroke(c2, cl, s * (O.w || 0.36), Y(O.col), { dim: O.dim == null ? 0.15 : O.dim });
+      c2.restore();
+      // v3.2: без шнура-обводки — край просто ровно обрезан, с мягкой тенью внутри
     } },
     cloud_vol: { fab: true, post(c2, g) { // облачко: светлые «шапки» сверху, голубоватая тень снизу
       const y0 = g.yTop, y1 = g.castEdge; c2.save(); c2.globalCompositeOperation = 'source-atop';
@@ -546,6 +545,13 @@
       topY: (c) => yOf(topRow(c)) - 0.45 * h, botY: (c) => yOf(botRow(c) - 1) + h * 0.35, castEdge: castY, botCenterCol,
       faceY: yOf(faceR), mainCode: main, dpr, Ymain: P.yarn(main), Yacc: P.yarn(acc), Ycast: P.yarn(castCode) };
     const deco = (def.deco || []).filter(d => DECO[d]);
+    // гладкий контур фигурки: точки крепления петельки/кисточки/стебелька — на самом контуре, а не на ступеньках маски
+    if (deco.includes('outline')) { const cat = window.PETELKA_CATALOG, it = cat && cat.items.find(i => i.id === def.item), O = it && it.ol;
+      if (O) { const top = yOf(H - 1) + 0.3 * h, bot = castY - 0.32 * h, pts = O.p.map(([px, py]) => [padX + px * s, top + (bot - top) * py / H]);
+        g.olMap = ([px, py]) => [padX + px * s, top + (bot - top) * py / H];
+        const near = pts.filter(p => Math.abs(p[0] - g.cx) < s * 0.45);
+        if (near.length) { const t = near.reduce((a, b) => b[1] < a[1] ? b : a), b = near.reduce((a, c) => c[1] > a[1] ? c : a);
+          g.olTop = [g.cx, t[1]]; g.olBot = [g.cx, b[1]]; g.castEdge = b[1] + 0.1 * s; } } }
     const mk = () => { const c = document.createElement('canvas'); c.width = Math.ceil(w * dpr); c.height = Math.ceil(hh * dpr); const x = c.getContext('2d'); x.scale(dpr, dpr); return [c, x]; };
     const [fab, x] = mk();
     const [pre, px] = mk(); for (const d of deco) if (DECO[d].pre) DECO[d].pre(px, g);
