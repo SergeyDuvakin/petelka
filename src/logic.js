@@ -4,6 +4,7 @@
     const H = level.height, W = level.width;
     const rows = level.rows.map(r => r.trim().split(/\s+/)); // снизу вверх
     const cells = rows.map(r => r.map(t => {
+      if (t === '-') return { none: true, any: false, opts: [] }; // вне силуэта: петли нет
       if (t === '?') return { any: true, opts: null };
       if (t.includes('/')) return { any: false, opts: t.split('/') };
       return { any: false, opts: [t] };
@@ -15,10 +16,12 @@
       this.def = def; const p = parse(def);
       this.W = p.W; this.H = p.H; this.cells = p.cells;
       this.balls = def.balls.map(b => ({ code: b.color, amount: b.amount, max: b.amount }));
-      this.row = 0; this.col = this.W - 1; // курсор
+      this.row = 0; this.col = this.firstCol(0); // курсор (пропускает клетки вне силуэта)
       this.knit = []; for (let r = 0; r < this.H; r++) this.knit.push(new Array(this.W).fill(null));
       this.done = false; this.moves = 0; this.history = [];
     }
+    firstCol(r) { let c = this.W - 1; while (c >= 0 && this.cells[r][c].none) c--; return c; }
+    nextCol(r, c) { c--; while (c >= 0 && this.cells[r][c].none) c--; return c; }
     accepts(r, c, code) { const cell = this.cells[r][c]; return cell.any || cell.opts.includes(code); }
     current() { return this.done ? null : this.cells[this.row][this.col]; }
     tap(bi) {
@@ -30,21 +33,22 @@
       const r = this.row, c = this.col;
       this.knit[r][c] = b.code; this.history.push({ r, c, bi });
       const res = { type: 'stitch', ball: bi, row: r, col: c, code: b.code, rowDone: false, itemDone: false };
-      this.col--;
-      if (this.col < 0) { res.rowDone = true; this.row++; this.col = this.W - 1; if (this.row >= this.H) { this.done = true; res.itemDone = true; } }
+      this.col = this.nextCol(r, c);
+      if (this.col < 0) { res.rowDone = true; this.row++; if (this.row >= this.H) { this.done = true; res.itemDone = true; } else this.col = this.firstCol(this.row); }
       return res;
     }
     // распустить: текущий ряд, а если он пуст — предыдущий
     unravel() {
       if (this.done) return null;
       let r = this.row; const out = { row: r, prevRow: false, stitches: [] };
-      if (this.col === this.W - 1) { if (r === 0) return null; r = r - 1; out.prevRow = true; out.row = r; }
+      const inRow = this.history.length && this.history[this.history.length - 1].r === r;
+      if (!inRow) { if (r === 0) return null; r = r - 1; out.prevRow = true; out.row = r; }
       // снимаем в обратном порядке (последняя связанная — первой)
       while (this.history.length && this.history[this.history.length - 1].r === r) {
         const h = this.history.pop(); this.balls[h.bi].amount++; this.knit[h.r][h.c] = null;
         out.stitches.push({ row: h.r, col: h.c, ball: h.bi, code: this.balls[h.bi].code });
       }
-      this.row = r; this.col = this.W - 1;
+      this.row = r; this.col = this.firstCol(r);
       return out;
     }
     // решатель: можно ли довязать из текущего состояния; возвращает индекс клубка для подсказки
@@ -60,6 +64,7 @@
         const key = idx + ':' + amt.join(',');
         if (memo.has(key)) return memo.get(key);
         const r = (idx / W) | 0, c = W - 1 - (idx % W);
+        if (this.cells[r][c].none) { const v = rec(idx + 1); memo.set(key, v); return v; }
         let ok = false;
         for (let i = 0; i < n && !ok; i++) {
           if (amt[i] <= 0 || !this.accepts(r, c, codes[i])) continue;
