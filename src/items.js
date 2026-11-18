@@ -233,6 +233,31 @@
       const sw = ((i * 53) % 5 - 2) * s * 0.03; ST.yarnStroke(c2, [[x, y], [x + sw * 0.5, y + L * 0.5], [x + sw, y + L]], s * 0.15, Yc, { shadow: i % 2 === 0 }); ST.yarnStroke(c2, [[x + s * 0.06, y], [x + s * 0.06 - sw * 0.4, y + L * 0.55], [x + s * 0.05 - sw, y + L * 0.95]], s * 0.13, Yc, { shadow: false, dim: 0.14 }); } } },
     tassels4: { post(c2, g) { const s = g.s, yt = g.yOf(g.H - 1) + g.h * 0.35, yb = g.yOf(0) + g.h * 0.25, xl = g.colX(0) + s * 0.25, xr = g.colX(g.W - 1) - s * 0.25; tassel(c2, xl, yb, s * 1.35, g.Yacc, s * 1.15, 3, 0.7); tassel(c2, xr, yb, s * 1.35, g.Yacc, s * 1.15, 4, -0.7); tassel(c2, xl, yt, s * 1.35, g.Yacc, s * 1.15, 5, 2.45); tassel(c2, xr, yt, s * 1.35, g.Yacc, s * 1.15, 6, -2.45); } },
     tube: { fab: true, post(c2, g) { volume(c2, g, g.padX, g.yTop, g.padX + g.W * g.s, g.castEdge, 1.2, false); } },
+    // обвязка фигурки: полотно обрезается по гладкому контуру (catalog.ol), край — вязаный шнур, внутри — швы-вышивка
+    outline: { fab: true, post(c2, g) {
+      const cat = window.PETELKA_CATALOG, it = cat && cat.items.find(i => i.id === g.def.item), O = it && it.ol; if (!O) return;
+      const s = g.s, top = g.yOf(g.H - 1) + 0.05 * g.h, bot = g.castEdge - 0.12 * g.h;
+      const map = ([x, y]) => [g.padX + x * s, top + (bot - top) * y / g.H];
+      const pts = O.p.map(map), path = new Path2D();
+      pts.forEach((p, i) => i ? path.lineTo(p[0], p[1]) : path.moveTo(p[0], p[1])); path.closePath();
+      c2.save(); c2.globalCompositeOperation = 'destination-in'; c2.fillStyle = '#000'; c2.fill(path); c2.restore();
+      c2.save(); c2.globalCompositeOperation = 'source-atop'; c2.lineJoin = 'round';     // объём: край чуть темнее, к центру светлее
+      c2.strokeStyle = 'rgba(120,50,80,0.12)'; c2.lineWidth = s * 1.3; c2.stroke(path);
+      c2.strokeStyle = 'rgba(120,50,80,0.12)'; c2.lineWidth = s * 0.6; c2.stroke(path); c2.restore();
+      const Y = (c) => c === 'acc' ? g.Yacc : c === 'main' || !c ? g.Ymain : P.yarn(c);
+      for (const sm of (O.seams || [])) ST.yarnStroke(c2, sm.map(map), s * (O.sw || 0.17), Y(O.scol || O.col), { shadow: false, dim: O.sdim == null ? 0.35 : O.sdim });
+      if (O.knots) { const [kx, ky] = map(O.knots), kr = O.knots[2] * s, Yk = Y(O.kcol || 'acc');   // серединка: узелки
+        c2.save(); c2.fillStyle = 'rgba(120,60,70,0.22)'; c2.beginPath(); c2.ellipse(kx, ky + kr * 0.12, kr * 1.08, kr * 1.02, 0, 0, 6.283); c2.fill(); c2.restore();
+        const ring = [[0, 0, 0.42]]; for (let i = 0; i < 7; i++) { const a = i / 7 * 6.283 + 0.3; ring.push([Math.cos(a) * 0.62, Math.sin(a) * 0.62, 0.36]); }
+        ring.forEach(([dx, dy, rr], i) => ST.drawBobble(c2, kx + dx * kr, ky + dy * kr, rr * kr, Yk, 1, 1 + i % 4)); }
+      const cl = [...pts, pts[0], pts[1]];
+      ST.yarnStroke(c2, cl, s * (O.w || 0.36), Y(O.col), { dim: O.dim == null ? 0.15 : O.dim });
+    } },
+    cloud_vol: { fab: true, post(c2, g) { // облачко: светлые «шапки» сверху, голубоватая тень снизу
+      const y0 = g.yTop, y1 = g.castEdge; c2.save(); c2.globalCompositeOperation = 'source-atop';
+      const gr = c2.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, 'rgba(255,255,255,0.28)'); gr.addColorStop(0.45, 'rgba(255,255,255,0)'); gr.addColorStop(0.75, 'rgba(110,100,160,0.10)'); gr.addColorStop(1, 'rgba(110,90,150,0.34)');
+      c2.fillStyle = gr; c2.fillRect(g.padX - 4, y0 - 4, g.W * g.s + 8, y1 - y0 + 8); c2.restore();
+      volume(c2, g, g.padX, g.yTop, g.padX + g.W * g.s, g.castEdge, 0.7, true); } },
     puffy: { fab: true, post(c2, g) { volume(c2, g, g.padX, g.yTop, g.padX + g.W * g.s, g.castEdge, 1, true); } },
     heeltoe: { fab: true, post(c2, g) { const s = g.s, y = g.yOf(1); volume(c2, g, g.padX + g.W * s - 2.8 * s, y - 1.6 * g.h, g.padX + g.W * s + 0.6 * s, g.castEdge + s * 0.3, 1.1, true); volume(c2, g, g.padX - 0.8 * s, y - 1.4 * g.h, g.padX + 2.4 * s, g.castEdge + s * 0.3, 1.1, true); } },
     tassel_tip: { post(c2, g) { const c = g.botCenterCol; tassel(c2, g.colX(c) + (g.W % 2 ? 0 : g.s / 2), g.botY(c) + g.s * 0.05, g.s * 1.5, g.Yacc, g.s, 7); } },
@@ -298,6 +323,73 @@
 
     pompom_small: { post(c2, g) { const c = Math.min(g.W - 2, Math.round(g.W * 0.66)); pompom(c2, g.colX(c), g.topY(c) + g.s * 0.15, g.s * 0.55, g.Yacc, 5); } },
     stalk: { post(c2, g) { const x = g.cx, y = g.yTop + g.s * 0.2, s = g.s; ST.yarnStroke(c2, [[x, y], [x + s * 0.05, y - s * 0.35], [x + s * 0.25, y - s * 0.62], [x + s * 0.42, y - s * 0.7]], s * 0.3, g.Ymain, {}); } },
+    // v3.1: узел-перекрут — две половины повязки сложены валиками и сцеплены, как звенья: левый валик спереди внизу, правый — спереди вверху
+    twist2: { fab: true, post(c2, g, fab) {
+      const s = g.s, x = g.cx, y0 = g.yTop + g.h * 0.15, y1 = g.castEdge - g.h * 0.1, ym = (y0 + y1) / 2, Hh = y1 - y0, dpr = g.dpr;
+      const T = document.createElement('canvas'); T.width = fab.width; T.height = fab.height; T.getContext('2d').drawImage(fab, 0, 0);
+      // полотно стягивается к узлу: талия и складки-«лучи»
+      c2.save(); c2.globalCompositeOperation = 'destination-out';
+      for (const sg of [-1, 1]) { c2.beginPath(); c2.moveTo(x - s * 3.4, sg < 0 ? y0 - s : y1 + s); c2.quadraticCurveTo(x, sg < 0 ? y0 + Hh * 0.2 : y1 - Hh * 0.2, x + s * 3.4, sg < 0 ? y0 - s : y1 + s); c2.closePath(); c2.fill(); }
+      c2.restore();
+      c2.save(); c2.globalCompositeOperation = 'source-atop'; c2.lineCap = 'round';
+      for (const d of [-1, 1]) for (let k = -2; k <= 2; k++) { const yy = ym + k * Hh * 0.17; c2.strokeStyle = `rgba(110,45,70,${0.22 - Math.abs(k) * 0.03})`; c2.lineWidth = Math.max(1, s * 0.09);
+        c2.beginPath(); c2.moveTo(x + d * s * 1.0, ym + k * Hh * 0.06); c2.quadraticCurveTo(x + d * s * 2.1, yy, x + d * s * 3.6, ym + k * Hh * 0.26); c2.stroke(); }
+      const gp = c2.createLinearGradient(x - s * 3.6, 0, x + s * 3.6, 0); gp.addColorStop(0, 'rgba(120,50,80,0)'); gp.addColorStop(0.35, 'rgba(120,50,80,0.18)'); gp.addColorStop(0.5, 'rgba(120,50,80,0.3)'); gp.addColorStop(0.65, 'rgba(120,50,80,0.18)'); gp.addColorStop(1, 'rgba(120,50,80,0)');
+      c2.fillStyle = gp; c2.fillRect(x - s * 3.6, y0 - s, s * 7.2, Hh + 2 * s); c2.restore();
+      // валик: скруглённый прямоугольник под углом, внутри — то же полотно, повёрнутое поперёк
+      const rw = s * 1.75, rh = Hh * 1.12;
+      const rollPath = (cx, ang) => { const p = new Path2D(), r = rw / 2; const m = new DOMMatrix().translateSelf(cx, ym).rotateSelf(ang * 180 / Math.PI);
+        const q = new Path2D(); q.roundRect(-rw / 2, -rh / 2, rw, rh, r); p.addPath(q, m); return p; };
+      const roll = (cx, ang, clipTop) => { const P2 = rollPath(cx, ang);
+        c2.save(); if (clipTop != null) { c2.beginPath(); c2.rect(cx - rw * 2, clipTop ? ym - rh : ym, rw * 4, rh); c2.clip(); }
+        c2.save(); c2.translate(s * 0.08, s * 0.16); c2.fillStyle = 'rgba(110,45,70,0.28)'; c2.filter = `blur(${Math.max(1, s * 0.12)}px)`; c2.fill(P2); c2.restore();
+        c2.save(); c2.clip(P2); c2.translate(cx, ym); c2.rotate(ang + Math.PI / 2); c2.drawImage(T, -T.width / dpr * 0.5 + (g.padX + g.W * s * 0.25 - g.w * 0.5) * 0, -ym * 1.0 + (x - g.w / 2) * 0, T.width / dpr, T.height / dpr); c2.restore();
+        c2.save(); c2.clip(P2); c2.translate(cx, ym); c2.rotate(ang);
+        const gl = c2.createLinearGradient(-rw / 2, 0, rw / 2, 0); gl.addColorStop(0, 'rgba(110,45,70,0.42)'); gl.addColorStop(0.22, 'rgba(110,45,70,0.08)'); gl.addColorStop(0.45, 'rgba(255,250,245,0.22)'); gl.addColorStop(0.7, 'rgba(110,45,70,0.05)'); gl.addColorStop(1, 'rgba(110,45,70,0.45)');
+        c2.fillStyle = gl; c2.fillRect(-rw, -rh, rw * 2, rh * 2);
+        const ge = c2.createLinearGradient(0, -rh / 2, 0, rh / 2); ge.addColorStop(0, 'rgba(110,45,70,0.25)'); ge.addColorStop(0.18, 'rgba(110,45,70,0)'); ge.addColorStop(0.82, 'rgba(110,45,70,0)'); ge.addColorStop(1, 'rgba(110,45,70,0.3)');
+        c2.fillStyle = ge; c2.fillRect(-rw, -rh, rw * 2, rh * 2);
+        c2.strokeStyle = 'rgba(110,45,70,0.22)'; c2.lineWidth = Math.max(1, s * 0.07);           // сборки на сгибе
+        for (const e of [-1, 1]) { c2.beginPath(); c2.moveTo(e * rw * 0.3, -rh * 0.42); c2.quadraticCurveTo(e * rw * 0.16, 0, e * rw * 0.3, rh * 0.42); c2.stroke(); }
+        c2.restore();
+        c2.save(); c2.strokeStyle = 'rgba(110,45,70,0.35)'; c2.lineWidth = Math.max(1, s * 0.08); c2.stroke(P2); c2.restore();
+        c2.restore(); };
+      const a = 0.3, dx = s * 0.62;
+      roll(x + dx, a, null);      // правый — целиком
+      roll(x - dx, -a, null);     // левый — поверх
+      roll(x + dx, a, true);      // правый снова поверх в верхней половине — сцепка
+    } },
+    // v3.1: повязка с вязаным бантиком — бант (контур как у фигурки «Бантик») связан мелкими петлями основным цветом, узелок — акцентом
+    bow_band: { fab: true, post(c2, g) {
+      const cat = window.PETELKA_CATALOG, B = cat && cat.items.find(i => i.id === 'bow'), O = B && B.ol; if (!O) return;
+      const s = g.s, x = g.cx, y0 = g.yTop + g.h * 0.1, y1 = g.castEdge - g.h * 0.1, ym = (y0 + y1) / 2, Hh = y1 - y0;
+      // полотно чуть стянуто под бантом: тень и складки
+      c2.save(); c2.globalCompositeOperation = 'source-atop'; c2.lineCap = 'round';
+      const gp = c2.createLinearGradient(x - s * 4.5, 0, x + s * 4.5, 0); gp.addColorStop(0, 'rgba(120,50,80,0)'); gp.addColorStop(0.5, 'rgba(120,50,80,0.3)'); gp.addColorStop(1, 'rgba(120,50,80,0)');
+      c2.fillStyle = gp; c2.fillRect(x - s * 4.5, y0 - s, s * 9, Hh + 2 * s);
+      for (const d of [-1, 1]) for (let k = -2; k <= 2; k++) { c2.strokeStyle = 'rgba(110,45,70,0.16)'; c2.lineWidth = Math.max(1, s * 0.08);
+        c2.beginPath(); c2.moveTo(x + d * s * 1.2, ym + k * Hh * 0.08); c2.quadraticCurveTo(x + d * s * 2.6, ym + k * Hh * 0.16, x + d * s * 4.2, ym + k * Hh * 0.24); c2.stroke(); }
+      c2.restore();
+      const bw = 15, bh = 12, sc = (Hh * 1.08) / (bh * g.h), ss = s * sc, hh = g.h * sc;          // бант: 15×12 «петель» фигурки в масштабе
+      const ox = x - bw * ss / 2, oy = ym - 5.0 * hh;
+      const map = ([px, py]) => [ox + px * ss, oy + py * hh];
+      const path = new Path2D(); O.p.map(map).forEach((p, i) => i ? path.lineTo(p[0], p[1]) : path.moveTo(p[0], p[1])); path.closePath();
+      c2.save(); c2.translate(s * 0.1, s * 0.22); c2.filter = `blur(${Math.max(1, s * 0.15)}px)`; c2.fillStyle = 'rgba(110,45,70,0.35)'; c2.fill(path); c2.restore();
+      const knot = (px, py) => Math.abs(px - 7.5) < 1.6 && py > 1.7 && py < 7.0;
+      const L = document.createElement('canvas'); L.width = c2.canvas.width; L.height = c2.canvas.height; const l = L.getContext('2d'); l.scale(g.dpr, g.dpr);
+      const fs = ss * 0.82, fh = fs * 0.78, band = g.mainCode, main = (g.def.balls.find(b => b.color !== band && !/[GW]/.test(b.color)) || {}).color || band, acc = band;
+      l.fillStyle = 'rgb(' + P.yarn(main).cBase.join(',') + ')'; l.fill(path);
+      for (let r = -1; r <= Math.ceil(bh * hh / fh) + 1; r++) for (let c = -1; c <= Math.ceil(bw * ss / fs) + 1; c++) {
+        const px = ox + (c + 0.5) * fs, py = oy + r * fh; const gx = (px - ox) / ss, gy = (py - oy) / hh;
+        ST.drawSprite(l, px, py, fs, fh, knot(gx, gy) ? acc : main, 1 + ((r * 7 + c * 3) & 3), g.dpr); }
+      l.globalCompositeOperation = 'destination-in'; l.fillStyle = '#000'; l.fill(path); l.globalCompositeOperation = 'source-atop';
+      const rg = l.createRadialGradient(x, ym, ss, x, ym, bw * ss * 0.55); rg.addColorStop(0, 'rgba(255,250,248,0.12)'); rg.addColorStop(0.6, 'rgba(255,255,255,0)'); rg.addColorStop(1, 'rgba(120,50,80,0.28)');
+      l.fillStyle = rg; l.fillRect(ox - ss, oy - hh, bw * ss + 2 * ss, bh * hh + 2 * hh);
+      l.strokeStyle = 'rgba(120,50,80,0.14)'; l.lineWidth = ss * 1.1; l.stroke(path);
+      for (const sm of (O.seams || [])) ST.yarnStroke(l, sm.map(map), ss * 0.2, P.yarn(main), { shadow: false, dim: 0.45 });
+      ST.yarnStroke(l, (() => { const q = O.p.map(map); return [...q, q[0], q[1]]; })(), ss * 0.34, P.yarn(main), { dim: 0.25 });
+      c2.drawImage(L, 0, 0, L.width / g.dpr, L.height / g.dpr);
+    } },
     twist: { fab: true, post(c2, g) { // узел-перекрут: две половины повязки огибают друг друга — объёмные вязаные ленты
       const s = g.s, x = g.cx, y0 = g.yTop + g.h * 0.1, y1 = g.castEdge - g.h * 0.05, ym = (y0 + y1) / 2, Hh = y1 - y0, Yc = g.Ymain;
       c2.save(); c2.globalCompositeOperation = 'source-atop';      // полотно стянуто к узлу: складки и тень
