@@ -53,32 +53,26 @@
     }
     // решатель: можно ли довязать из текущего состояния; возвращает индекс клубка для подсказки
     solve() {
-      const memo = new Map(); const W = this.W, H = this.H, n = this.balls.length;
+      // порядок петель не влияет на расход пряжи, поэтому выполнимость — условие Холла:
+      // для любого набора клубков S петель, которые можно связать только из S, не больше, чем пряжи в S (n ≤ 5 → 32 набора)
+      const W = this.W, H = this.H, n = this.balls.length, total = W * H, full = (1 << n) - 1;
       const amt = this.balls.map(b => b.amount); const codes = this.balls.map(b => b.code);
       const startIdx = this.row * W + (W - 1 - this.col);
-      const total = W * H;
-      let steps = 0;
-      const rec = (idx) => {
-        if (idx >= total) return true;
-        if (++steps > 200000) return true; // страховка: не блокируем кадр
-        const key = idx + ':' + amt.join(',');
-        if (memo.has(key)) return memo.get(key);
-        const r = (idx / W) | 0, c = W - 1 - (idx % W);
-        if (this.cells[r][c].none) { const v = rec(idx + 1); memo.set(key, v); return v; }
-        let ok = false;
-        for (let i = 0; i < n && !ok; i++) {
-          if (amt[i] <= 0 || !this.accepts(r, c, codes[i])) continue;
-          amt[i]--; ok = rec(idx + 1); amt[i]++;
-        }
-        memo.set(key, ok); return ok;
-      };
+      const cnt = new Array(1 << n).fill(0);
+      for (let idx = startIdx; idx < total; idx++) {
+        const r = (idx / W) | 0, c = W - 1 - (idx % W); const cell = this.cells[r][c]; if (cell.none) continue;
+        let m = 0; for (let i = 0; i < n; i++) if (this.accepts(r, c, codes[i])) m |= 1 << i; cnt[m]++;
+      }
+      if (cnt[0] > 0) return { ok: false, hint: -1 };
+      const feasible = () => { for (let S = 1; S <= full; S++) { let need = 0, have = 0; for (let m = 1; m <= full; m++) if ((m & S) === m) need += cnt[m]; for (let i = 0; i < n; i++) if (S >> i & 1) have += Math.max(0, amt[i]); if (need > have) return false; } return true; };
       if (this.done) return { ok: true, hint: -1 };
-      const r = this.row, c = this.col;
-      // перебор с предпочтением клубка с бОльшим запасом — подсказка «мягкая»
+      const r = this.row, c = this.col; let m0 = 0; for (let i = 0; i < n; i++) if (this.accepts(r, c, codes[i])) m0 |= 1 << i;
+      cnt[m0]--;
+      // подсказка «мягкая»: из допустимых — клубок с бОльшим запасом
       const order = [...Array(n).keys()].sort((a, b) => amt[b] - amt[a]);
       for (const i of order) {
-        if (amt[i] <= 0 || !this.accepts(r, c, codes[i])) continue;
-        amt[i]--; const ok = rec(startIdx + 1); amt[i]++;
+        if (amt[i] <= 0 || !(m0 >> i & 1)) continue;
+        amt[i]--; const ok = feasible(); amt[i]++;
         if (ok) return { ok: true, hint: i };
       }
       return { ok: false, hint: -1 };

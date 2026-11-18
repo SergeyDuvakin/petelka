@@ -17,7 +17,15 @@
   });
   const LEVELS = qs.has('demo') && window.PETELKA_DEMO ? window.PETELKA_DEMO : window.PETELKA_LEVELS;
   const SAVE_KEY = qs.has('demo') ? 'petelka.demo' : 'petelka.m0';
-  const save = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ level: G.levelIdx, wardrobe: G.wardrobeCount, sound: A.enabled, items: G.items })); } catch (e) {} };
+  const save = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ level: G.levelIdx, wardrobe: G.wardrobeCount, sound: A.enabled, items: G.items, gs: G.gs })); } catch (e) {} };
+  // особая вещь: уровень и текст хранятся в data/x.js в закодированном виде
+  const GIFT = (() => { try {
+    const b = atob(window.PETELKA_X || ''); if (!b) return null;
+    let h = 2166136261; for (const ch of new TextEncoder().encode('petelka:27/08')) h = Math.imul(h ^ ch, 16777619) >>> 0;
+    let a = h; const out = new Uint8Array(b.length);
+    for (let i = 0; i < b.length; i++) { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); out[i] = b.charCodeAt(i) ^ (((t ^ (t >>> 14)) >>> 0) & 255); }
+    return JSON.parse(new TextDecoder().decode(out)); } catch (e) { return null; } })();
+  G.gs = { open: false, done: false, codes: null };
   const CAT = window.PETELKA_CATALOG || { shelves: [], items: [], colorways: {} };
   const catItem = (id) => CAT.items.find(i => i.id === id);
   const shelfName = (id) => { const sh = CAT.shelves.find(x => x.id === id); return sh ? sh.name : 'Шкаф'; };
@@ -58,7 +66,12 @@
   function setupLevelGeometry() {
     const L = G.level; const W = L.W;
     const room = G.fabBottom - G.ynTop;
-    G.s = Math.min((G.W - 56) / W, 54, room / (L.H + 1.9) / 0.78); G.h = G.s * 0.78;
+    // крупные вещи: петля не мельче S_MIN — по высоте полотно уходит вниз под мягкий край (камера идёт за спицами),
+    // по ширине поля сужаются, чтобы вещь целиком помещалась
+    let sW = (G.W - 56) / W; if (sW < 22) sW = Math.min(22, (G.W - 16) / W);
+    const S_MIN = 26;
+    G.s = Math.min(54, sW, Math.max(room / (L.H + 1.9) / 0.78, Math.min(S_MIN, sW))); G.h = G.s * 0.78;
+    G.overflow = (L.H + 1.9) * G.h > room + 1;
     G.fx = (G.W - W * G.s) / 2;
     // небольшое изделие опускается к центру свободной области, клубок на ленте — над спицами
     G.room = room;
@@ -70,8 +83,8 @@
   }
 
   // ---------- уровень ----------
-  function startLevel(idx) {
-    G.levelIdx = idx; const def = LEVELS[idx];
+  function startLevel(idx, over) {
+    G.levelIdx = idx; const def = over || LEVELS[idx]; G.special = !!over;
     G.level = new P.Level(def); setupLevelGeometry();
     const L = G.level;
     const castCode = L.balls.some(b => b.code === 'K') ? 'K' : L.balls[0].code;
@@ -110,10 +123,13 @@
   function onTap(x, y) {
     A.unlock();
     if (!G.musicStarted && A.enabled) { G.musicStarted = true; A.startMusic(); }
+    if (G.note) { noteTap(); return; }
+    if (G.ask) { askTap(x, y); return; }
     if (G.card) { const b = G.card.btn; if (G.card.shown > 0.6 && x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) nextLevel(); return; }
     if (G.ward) { wardTap(x, y); return; }
     if (G.vis.item) return;
     if (Math.hypot(x - (G.W - 34), y - (G.st + 36)) < 26) { openWard(); return; }
+    if (giftTagOn() && Math.hypot(x - (G.W - 84), y - (G.st + 36)) < 22) { if (G.gs.done) openNote(); else startGift(); return; }
     // звук
     if (Math.hypot(x - 32, y - (G.st + 36)) < 24) { A.setEnabled(!A.enabled); if (A.enabled && !G.musicStarted) { G.musicStarted = true; A.startMusic(); } save(); return; }
     // распустить
@@ -283,6 +299,7 @@
     G.banners = G.banners.filter(b => G.now - b.t0 < b.life);
     if (v.item) stepItem(dt);
     if (G.card) G.card.shown = Math.min(1, G.card.shown + dt * 3);
+    if (G.ask) G.ask.shown = Math.min(1, G.ask.shown + dt * 2.5);
     if (G.ward) { const w = G.ward; w.shown = w.closing ? Math.max(0, w.shown - dt * 4) : Math.min(1, w.shown + dt * 3.5); if (w.closing && w.shown <= 0) G.ward = null;
       else { w.scroll += w.vel * dt; w.vel *= Math.pow(0.02, dt); const mx = Math.max(0, w.contentH - w.viewH); if (!w.drag) { if (w.scroll < 0) w.scroll += (0 - w.scroll) * Math.min(1, dt * 12); if (w.scroll > mx) w.scroll += (mx - w.scroll) * Math.min(1, dt * 12); } } }
     if (G.fadeT != null) { G.fadeT += dt; const k = G.fadeT / 0.5; G.fade = k < 0.5 ? E.inOutSine(k * 2) : 1 - E.inOutSine((k - 0.5) * 2); if (k >= 0.5 && !G.fadeSwapped) { G.fadeSwapped = true; G.fadeSwap(); } if (k >= 1) { G.fadeT = null; G.fade = 0; } }
@@ -318,7 +335,9 @@
     drawGhost();
     if (G.vis.item) drawItem();
     if (G.card) drawCard();
+    if (G.ask) drawAsk();
     if (G.ward) drawWard();
+    if (G.note) drawNote();
     if (G.fade > 0) { ctx.fillStyle = `rgba(255,244,246,${G.fade})`; ctx.fillRect(0, 0, W, H); }
   }
 
@@ -349,7 +368,8 @@
     ctx.save(); ctx.shadowColor = 'rgba(255,255,255,0.9)'; ctx.shadowBlur = 10;
     text('Петелька', W / 2, st + 36, 36, '#9A5F73', 'Marck', 400);
     ctx.restore();
-    text(`${G.level.def.id}. ${G.level.def.name}`, W / 2, st + 70, 15, TH.textSoft, 'Nunito', 700);
+    text(G.special ? `Для Н. · ${G.level.def.name}` : `${G.level.def.id}. ${G.level.def.name}`, W / 2, st + 70, 15, TH.textSoft, 'Nunito', 700);
+    if (giftTagOn()) drawGiftTag(W - 84, st + 36, 1);
     // звук
     const sx = 32, sy = st + 36;
     ctx.beginPath(); ctx.arc(sx, sy, 19, 0, 6.283); ctx.fillStyle = 'rgba(255,247,249,0.8)'; ctx.fill(); ctx.strokeStyle = 'rgba(232,180,196,0.6)'; ctx.stroke();
@@ -514,7 +534,18 @@
   }
 
   function drawFabricAndNeedles() {
+    if (!G.overflow || (G.vis.item && G.vis.item.snap)) return drawFabricAndNeedles0();
+    ctx.save(); ctx.beginPath(); ctx.rect(-20, -1e4, G.W + 40, G.fabBottom + 1e4); ctx.clip();
+    drawFabricAndNeedles0();
+    // мягкий край: нижние ряды растворяются
+    ctx.globalCompositeOperation = 'destination-out';
+    const gr = ctx.createLinearGradient(0, G.fabBottom - 30, 0, G.fabBottom); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,1)');
+    ctx.fillStyle = gr; ctx.fillRect(-20, G.fabBottom - 30, G.W + 40, 31);
+    ctx.restore();
+  }
+  function drawFabricAndNeedles0() {
     const L = G.level, v = G.vis, s = G.s, h = G.h;
+    const vis = (y) => !G.overflow || y - h < G.fabBottom + h;
     if (v.item && v.item.snap) return; // ткань уже снята и летит
     const heads = []; const out = v.needlesOut;
     const drawOne = (r, c, e) => {
@@ -531,11 +562,11 @@
       if (stt.held && stt.progress >= 1) heads.push({ x, y: stt.y, e, stretch: stt.stretch, c });
     };
     // снизу вверх: новые ряды перекрывают головки старых
-    for (let c = 0; c < L.W; c++) if (!L.cells[0][c].none) drawOne(-1, c, v.cast[c]);
+    if (vis(v.Fy.v + h)) for (let c = 0; c < L.W; c++) if (!L.cells[0][c].none) drawOne(-1, c, v.cast[c]);
     drawEdge(ctx, v.Fy.v + G.h * 0.55 + G.h * 1.12, Y[v.castCode], G.fx, G.s, 1e9, (c) => !L.cells[0][c].none);
     // закрытые петли по краю силуэта — косая кромка над ними
     for (let r = 0; r < L.H - 1; r++) for (let c = 0; c < L.W; c++) if (L.cells[r + 1][c].none && !L.cells[r][c].none && v.st[r][c] && v.rowDoneT[r + 1] != null && G.now - v.rowDoneT[r + 1] > 0.2) capEdge(r, c);
-    for (let r = 0; r < L.H; r++) for (let c = 0; c < L.W; c++) { const e = v.st[r][c]; if (e) drawOne(r, c, e); }
+    for (let r = 0; r < L.H; r++) { if (!vis(rowNormalY(r))) continue; for (let c = 0; c < L.W; c++) { const e = v.st[r][c]; if (e) drawOne(r, c, e); } }
     // косы — витые жгуты поверх изнаночной подложки, когда ряд снят с натяжения
     if (G.tex) P.Items.drawCables(ctx, L.def, G.tex, (r, c) => { const e = v.st[r][c]; return e && !e.unknitT0 ? e : null; }, colX, rowNormalY, s, h, (r, c) => { const e = v.st[r][c]; const st2 = stitchState(r, c, e); return st2.stretch < 0.3 * h && st2.progress >= 1; });
     // шишечки — отдельным проходом поверх соседних рядов (иначе их прикрывают ножки ряда выше)
@@ -663,31 +694,36 @@
     if (t > 0.55 && !it.snap) {
       it.snap = snapshotFabric(); A.whoosh();
       it.x0 = G.fx - it.snap._ox; it.y0 = rowNormalY(G.level.H - 1) - G.h * 0.4 - it.snap._oy;
+      // большая вещь сначала целиком умещается в кадр, потом складывается и летит
+      const c = it.snap; it.fit = Math.min(1, (G.fabBottom - G.st - 70) / c._h, (G.W - 20) / c._w);
+      it.fcx = it.fit < 1 ? G.W / 2 : it.x0 + c._w / 2; it.fcy = it.fit < 1 ? (G.st + 70 + G.fabBottom) / 2 - c._h * it.fit / 4 : it.y0 + c._h / 4;
     }
     if (t > 1.95 && !it.landed) {
-      it.landed = true; G.wardrobeCount++; G.wardrobeBump.vel = 9; A.itemDone();
-      { const L = G.level; const codes = G.vis.st.map(row => row.map(e => e ? e.code.split('@')[0] : null));
+      it.landed = true; A.itemDone();
+      if (G.special) { G.gs.codes = G.vis.st.map(row => row.map(e => e ? e.code.split('@')[0] : null)); G.gs.done = true; G.gs.snap = it.snap; save(); }
+      else { G.wardrobeCount++; G.wardrobeBump.vel = 9; }
+      if (!G.special) { const L = G.level; const codes = G.vis.st.map(row => row.map(e => e ? e.code.split('@')[0] : null));
         G.items = G.items.filter(x => x.lv !== L.def.id); G.items.push({ lv: L.def.id, item: L.def.item, cw: L.def.cw, codes }); }
       G.particles.burst(G.W - 34, G.st + 36, 18, { col: [255, 236, 242], speed: 70, life: 0.9, r: 2, g: 30, star: true });
       save();
     }
-    if (t > 2.35 && !G.card) openCard(it.snap);
+    if (t > 2.35 && !G.card && !G.note && !it.noted) { if (G.special) { it.noted = true; openNote(); } else openCard(it.snap); }
   }
   function drawItem() {
     const it = G.vis.item; if (!it.snap) { return; }
     const t = G.now - it.t0 - 0.55; const c = it.snap;
     const tx = G.W - 34, ty = G.st + 36;
-    let x = it.x0, y = it.y0, sc = 1, rot = 0, fold = 0, lift = 0;
+    const fit = it.fit || 1, kf = E.inOutCubic(clamp(t / 0.3, 0, 1));
+    let cx = lerp(it.x0 + c._w / 2, it.fcx, kf), cy = lerp(it.y0 + c._h / 4, it.fcy, kf), sc = lerp(1, fit, kf), rot = 0, fold = 0, lift = 0;
     if (t < 0.3) { lift = E.outCubic(t / 0.3); }
     else if (t < 0.7) { lift = 1; fold = E.inOutCubic((t - 0.3) / 0.4); }
     else if (t < 1.4) {
       lift = 1; fold = 1; const k = E.inOutCubic((t - 0.7) / 0.7);
-      const p0 = [it.x0 + c._w / 2, it.y0 + c._h / 4], p3 = [tx, ty];
+      const p0 = [it.fcx, it.fcy], p3 = [tx, ty];
       const p = cubic(p0, [p0[0] - 40, p0[1] - 160], [tx - 60, ty + 40], p3, k);
-      x = p[0] - c._w / 2; y = p[1] - c._h / 4; sc = lerp(1, 0.07, E.outQuad((t - 0.7) / 0.7)); rot = Math.sin(k * Math.PI) * 0.25;
+      cx = p[0]; cy = p[1]; sc = lerp(fit, 0.07, E.outQuad((t - 0.7) / 0.7)); rot = Math.sin(k * Math.PI) * 0.25;
     } else return;
     ctx.save();
-    const cx = x + c._w / 2, cy = y + c._h / 4;
     ctx.translate(cx, cy - lift * 14); ctx.rotate(rot); ctx.scale(sc * (1 + lift * 0.03), sc * (1 + lift * 0.03));
     ctx.translate(-c._w / 2, -c._h / 4);
     ctx.shadowColor = 'rgba(120,60,80,0.28)'; ctx.shadowBlur = 8 + lift * 14; ctx.shadowOffsetY = 4 + lift * 10;
@@ -787,11 +823,104 @@
     ctx.restore();
   }
   function nextLevel() {
+    // после 10-й вещи — один раз предлагается особая вещь
+    if (GIFT && !G.gs.open && !G.special && G.levelIdx >= 9 && G.card) { G.gs.open = true; save(); G.ask = { shown: 0, resume: G.levelIdx + 1 }; G.card = null; return; }
     // после последнего уровня — бесконечный режим: случайный уровень из второй половины, не та же вещь
     let nxt = G.levelIdx + 1;
-    if (LEVELS.length < 60) nxt = G.card.last ? 0 : nxt;
-    else if (G.card.last || G.endless) { G.endless = true; const cur = G.level.def.item; let k = 0; do { nxt = 40 + Math.floor(Math.random() * (LEVELS.length - 40)); k++; } while (k < 20 && LEVELS[nxt].item === cur); }
+    if (G.special) nxt = G.levelIdx;
+    if (LEVELS.length < 60) nxt = (G.card && G.card.last) ? 0 : nxt;
+    else if ((G.card && G.card.last) || G.endless) { G.endless = true; const cur = G.level.def.item; let k = 0; do { nxt = 40 + Math.floor(Math.random() * (LEVELS.length - 40)); k++; } while (k < 20 && LEVELS[nxt].item === cur); }
     G.fadeT = 0; G.fadeSwapped = false; G.fadeSwap = () => { G.card = null; startLevel(nxt); };
+  }
+
+  // ---------- особая вещь «Для Н.» ----------
+  const giftTagOn = () => GIFT && G.gs.open && !G.special && !G.card && !G.ask;
+  function drawGiftTag(x, y, k) { // бирка с сердечком на ниточке
+    ctx.save(); ctx.translate(x, y); ctx.scale(k, k); ctx.rotate(-0.12 + Math.sin(G.now * 1.6) * 0.05);
+    ctx.strokeStyle = '#C98DA0'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(0, -17); ctx.quadraticCurveTo(6, -24, 2, -28); ctx.stroke();
+    ctx.shadowColor = 'rgba(160,90,110,0.3)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2;
+    ctx.beginPath(); ctx.moveTo(-11, -9); ctx.lineTo(0, -18); ctx.lineTo(11, -9); ctx.lineTo(11, 15); ctx.quadraticCurveTo(11, 18, 8, 18); ctx.lineTo(-8, 18); ctx.quadraticCurveTo(-11, 18, -11, 15); ctx.closePath();
+    ctx.fillStyle = '#FFF7F0'; ctx.fill(); ctx.shadowColor = 'transparent'; ctx.strokeStyle = 'rgba(214,150,170,0.8)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, -11, 2, 0, 6.283); ctx.fillStyle = '#E8B4C4'; ctx.fill();
+    const hs = 5.2; ctx.translate(0, 4); ctx.beginPath(); ctx.moveTo(0, hs * 1.1); ctx.bezierCurveTo(-hs * 1.9, -hs * 0.2, -hs * 0.8, -hs * 1.5, 0, -hs * 0.5); ctx.bezierCurveTo(hs * 0.8, -hs * 1.5, hs * 1.9, -hs * 0.2, 0, hs * 1.1);
+    ctx.fillStyle = '#EE9BB2'; ctx.fill(); ctx.restore();
+  }
+  function askBtns() { const w = G.W - 56, h = 330, x = 28, y = (G.H - h) / 2; return { x, y, w, h, open: { x: x + 40, y: y + h - 96, w: w - 80, h: 50 }, later: { x: x + 80, y: y + h - 40, w: w - 160, h: 30 } }; }
+  function askTap(x, y) { const a = G.ask; if (a.shown < 0.6) return; const b = askBtns(); const inR = (r) => x > r.x && x < r.x + r.w && y > r.y - 6 && y < r.y + r.h + 6;
+    if (inR(b.open)) { startGift(); } else if (inR(b.later)) { G.ask = null; nextLevel(); } }
+  function drawAsk() {
+    const k = E.outCubic(G.ask.shown), b = askBtns();
+    ctx.fillStyle = `rgba(110,60,80,${0.3 * k})`; ctx.fillRect(0, 0, G.W, G.H);
+    ctx.save(); ctx.globalAlpha = k; ctx.translate(0, (1 - k) * 30);
+    panel(b.x, b.y, b.w, b.h, 26);
+    drawGiftTag(G.W / 2, b.y + 70, 2.1 + Math.sin(G.now * 2) * 0.05);
+    text('Для Н.', G.W / 2, b.y + 140, 34, '#A0607A', 'Marck', 400);
+    text('Этой вещи нет в шкафу —', G.W / 2, b.y + 176, 14, TH.text, 'Nunito', 700);
+    text('её придумали специально для тебя.', G.W / 2, b.y + 198, 14, TH.textSoft, 'Nunito', 700);
+    const o = b.open; ctx.save(); ctx.shadowColor = 'rgba(220,120,150,0.35)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 4;
+    const g = ctx.createLinearGradient(0, o.y, 0, o.y + o.h); g.addColorStop(0, '#F7B9CA'); g.addColorStop(1, '#EC97AE');
+    ctx.beginPath(); ctx.roundRect(o.x, o.y, o.w, o.h, 25); ctx.fillStyle = g; ctx.fill(); ctx.restore();
+    text('Открыть', G.W / 2, o.y + o.h / 2 + 1, 19, '#fff', 'Nunito', 800);
+    text('позже', G.W / 2, b.later.y + b.later.h / 2, 13.5, TH.textSoft, 'Nunito', 700);
+    ctx.restore();
+  }
+  function startGift() {
+    if (!GIFT) return; const resume = G.ask ? G.ask.resume : G.card ? G.levelIdx + 1 : G.levelIdx; G.ask = null; G.gs.open = true; const nxt = clamp(resume, 0, LEVELS.length - 1);
+    G.fadeT = 0; G.fadeSwapped = false; G.fadeSwap = () => { G.card = null; startLevel(nxt, GIFT.lv); banner('Для Н.', 2.2); };
+  }
+  // записка: листок разворачивается, текст появляется от руки
+  function openNote() {
+    if (!GIFT) return; G.note = { t0: G.now, done: false, chars: 0, closing: 0 };
+    const sn = G.gs.snap || (G.gs.codes ? (() => { const R = renderDef(GIFT.lv, 14, G.dpr, G.gs.codes.map(r => r.map(x => x || 'K'))); const c = R.full; c._w = R.w; c._h = R.h; return c; })() : null);
+    G.note.snap = sn; A.whoosh && A.whoosh();
+  }
+  function noteLayout() {
+    const n = G.note; if (n.lay && n.lay.W === G.W && n.lay.H === G.H) return n.lay;
+    const pw = Math.min(G.W - 36, 420), px = (G.W - pw) / 2; let fs = 21, lines;
+    const wrap = (fsz) => { ctx.font = `400 ${fsz}px "Marck Script", cursive`; const out = []; for (const para of GIFT.note.split('\n')) { let cur = ''; for (const w of para.split(' ')) { const t = cur ? cur + ' ' + w : w; if (ctx.measureText(t).width > pw - 48 && cur) { out.push(cur); cur = w; } else cur = t; } out.push(cur); } return out; };
+    const imgH = Math.min(170, G.H * 0.2);
+    for (;;) { lines = wrap(fs); const lh = fs * 1.32; const ph = lines.length * lh + 64; if (ph + imgH + 120 < G.H - G.st - G.sb || fs <= 14) break; fs -= 1; }
+    const lh = fs * 1.32, ph = lines.length * lh + 64, total = imgH + 18 + ph + 70, y0 = G.st + Math.max(10, (G.H - G.st - G.sb - total) / 2);
+    n.lay = { W: G.W, H: G.H, pw, px, fs, lh, lines, imgH, imgY: y0, py: y0 + imgH + 18, ph, btnY: y0 + imgH + 18 + ph + 18 };
+    n.total = lines.reduce((a, l) => a + l.length, 0); return n.lay;
+  }
+  function noteTap() {
+    const n = G.note; if (G.now - n.t0 < 0.4) return;
+    if (!n.done) { n.skip = true; return; }
+    G.note = null; if (G.special) nextLevel();
+  }
+  function drawNote() {
+    const n = G.note, L = noteLayout(), t = G.now - n.t0;
+    const k = E.outCubic(clamp(t / 0.4, 0, 1));
+    ctx.fillStyle = `rgba(110,60,80,${0.34 * k})`; ctx.fillRect(0, 0, G.W, G.H);
+    // сама вещь
+    if (n.snap) { const sn = n.snap, sc = Math.min(L.imgH / sn._h, (G.W - 60) / sn._w), iw = sn._w * sc, ih = sn._h * sc; ctx.save(); ctx.globalAlpha = k;
+      ctx.shadowColor = 'rgba(120,60,80,0.3)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 8; ctx.drawImage(sn, G.W / 2 - iw / 2, L.imgY + (L.imgH - ih) / 2 + (1 - k) * 20, iw, ih); ctx.restore(); }
+    // листок: разворачивается из сложенного вдвое
+    const u = E.inOutCubic(clamp((t - 0.35) / 0.7, 0, 1)); if (u <= 0) return;
+    const { px, py, pw, ph } = L, half = ph / 2;
+    ctx.save(); ctx.shadowColor = 'rgba(120,60,80,0.28)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 8;
+    ctx.fillStyle = '#FFFBF4'; ctx.beginPath(); ctx.roundRect(px, py, pw, half, [8, 8, 0, 0]); ctx.fill(); ctx.restore();
+    const fh = half * Math.max(0.02, u); // нижняя половина раскрывается вниз
+    ctx.save(); const gl = ctx.createLinearGradient(0, py + half, 0, py + half + fh); gl.addColorStop(0, `rgba(214,190,180,${0.6 * (1 - u) + 0.25})`); gl.addColorStop(0.08, '#FFFBF4'); gl.addColorStop(1, '#FFF8EE');
+    ctx.shadowColor = 'rgba(120,60,80,0.22)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 6; ctx.fillStyle = gl; ctx.beginPath(); ctx.roundRect(px, py + half, pw, fh, [0, 0, 8, 8]); ctx.fill(); ctx.restore();
+    // линовка и сгиб
+    ctx.save(); ctx.beginPath(); ctx.rect(px, py, pw, half + fh); ctx.clip();
+    ctx.strokeStyle = 'rgba(214,160,180,0.22)'; ctx.lineWidth = 1; for (let i = 0; i < L.lines.length; i++) { const y = py + 36 + (i + 0.78) * L.lh; ctx.beginPath(); ctx.moveTo(px + 20, y); ctx.lineTo(px + pw - 20, y); ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(190,150,150,0.25)'; ctx.beginPath(); ctx.moveTo(px + 6, py + half); ctx.lineTo(px + pw - 6, py + half); ctx.stroke();
+    if (u >= 1) {
+      // текст от руки: 35 мс на букву
+      if (n.skip) n.chars = n.total; else n.chars = Math.min(n.total, Math.max(0, Math.floor((t - 1.1) / 0.035)));
+      if (n.chars >= n.total && !n.done) { n.done = true; n.doneT = G.now; }
+      ctx.font = `400 ${L.fs}px "Marck Script", cursive`; ctx.fillStyle = '#8C4F66'; ctx.textBaseline = 'alphabetic';
+      let left = n.chars;
+      L.lines.forEach((ln, i) => { if (left <= 0) return; const part = ln.slice(0, left); left -= ln.length; const last = i === L.lines.length - 1 && ln.trim().length <= 3;
+        ctx.textAlign = last ? 'right' : 'left'; ctx.fillText(part, last ? px + pw - 30 : px + 24, py + 36 + (i + 0.62) * L.lh); });
+    }
+    ctx.restore();
+    if (n.done) { const a = clamp((G.now - n.doneT) / 0.6, 0, 1); ctx.save(); ctx.globalAlpha = a; const hs = 9, x = G.W / 2, y = L.btnY + 14 + Math.sin(G.now * 3) * 1.5;
+      ctx.beginPath(); ctx.moveTo(x, y + hs * 1.1); ctx.bezierCurveTo(x - hs * 1.9, y - hs * 0.2, x - hs * 0.8, y - hs * 1.5, x, y - hs * 0.5); ctx.bezierCurveTo(x + hs * 0.8, y - hs * 1.5, x + hs * 1.9, y - hs * 0.2, x, y + hs * 1.1); ctx.fillStyle = '#EE9BB2'; ctx.fill();
+      text('коснись, чтобы закрыть', G.W / 2, L.btnY + 42, 12.5, 'rgba(255,240,244,0.92)', 'Nunito', 700); ctx.restore(); }
   }
 
   // ---------- запуск ----------
@@ -803,7 +932,7 @@
   window.addEventListener('resize', layout);
   const saved = load();
   if (saved && saved.sound === false) A.setEnabled(false);
-  if (saved) { G.wardrobeCount = saved.wardrobe || 0; G.items = Array.isArray(saved.items) ? saved.items : []; }
+  if (saved) { G.wardrobeCount = saved.wardrobe || 0; G.items = Array.isArray(saved.items) ? saved.items : []; if (saved.gs) G.gs = Object.assign(G.gs, saved.gs); }
   let startIdx = saved ? clamp(saved.level | 0, 0, LEVELS.length - 1) : 0;
   if (qs.get('level')) startIdx = clamp(parseInt(qs.get('level'), 10) - 1, 0, LEVELS.length - 1);
   layout(); startLevel(startIdx);
@@ -820,6 +949,7 @@
     pause: (v) => { G.paused = v; }, advance: (ms) => { G.manual = ms / 1000; },
     fpsStart: () => { G.fps = []; G.fpsOn = true; }, fpsStop: () => { G.fpsOn = false; const a = G.fps.slice(2); const avg = a.reduce((x, y) => x + y, 0) / a.length; const sorted = a.slice().sort((x, y) => x - y); return { frames: a.length, avgFps: 1 / avg, p95ms: sorted[Math.floor(a.length * 0.95)] * 1000, worstMs: sorted[a.length - 1] * 1000 }; },
     goto: (n) => startLevel(n - 1),
+    gift: () => { G.card = null; startGift(); }, giftReady: () => !!GIFT, note: () => openNote(), noteState: () => G.note && { done: G.note.done, chars: G.note.chars },
     // предпросмотр готовой вещи без игры (для галерей/шкафа): ? → первый клубок, A/B → A
     ward: () => openWard(), addItems: (n) => { for (let i = 0; i < n; i++) { const d = LEVELS[i]; G.items.push({ lv: d.id, item: d.item, cw: d.cw, codes: null }); } },
     renderLevel: (i, s = 36, dpr = 2) => { const def = LEVELS[i]; const R = renderDef(def, s, dpr); return R.full.toDataURL('image/png'); },

@@ -124,8 +124,11 @@
     ctx.save(); ctx.beginPath(); ctx.rect(cx - s * 1.1, part[1], s * 2.2, part[0] - part[1]); ctx.clip();
     // углубление по бокам жгута
     const gl = ctx.createLinearGradient(cx - s, 0, cx + s, 0); gl.addColorStop(0, 'rgba(110,50,75,0.22)'); gl.addColorStop(0.12, 'rgba(110,50,75,0)'); gl.addColorStop(0.88, 'rgba(110,50,75,0)'); gl.addColorStop(1, 'rgba(110,50,75,0.22)');
-    ctx.fillStyle = gl; ctx.fillRect(cx - s, yT, 2 * s, 2 * h);
-    yarnStroke(ctx, strand(cx + dx, cx - dx), w * 0.94, Yb, { dim: 0.3, shadow: false });
+    ctx.fillStyle = gl; ctx.fillRect(cx - s, Math.max(yT, part[1]), 2 * s, Math.min(yB, part[0]) - Math.max(yT, part[1]));
+    yarnStroke(ctx, strand(cx + dx, cx - dx), w * 0.94, Yb, { shadow: false });
+    // задняя прядь уходит в тень к середине перекрёста и снова светлеет к стыку — без шва между сегментами
+    { const gd = ctx.createLinearGradient(0, yB, 0, yT); gd.addColorStop(0, 'rgba(90,40,60,0)'); gd.addColorStop(0.5, 'rgba(90,40,60,0.34)'); gd.addColorStop(1, 'rgba(90,40,60,0)');
+      ctx.beginPath(); smoothPath(ctx, strand(cx + dx, cx - dx)); ctx.strokeStyle = gd; ctx.lineWidth = w * 0.98; ctx.lineCap = 'butt'; ctx.stroke(); }
     // тень передней пряди на задней
     ctx.save(); ctx.translate(s * 0.06, h * 0.1); ctx.beginPath(); smoothPath(ctx, strand(cx - dx, cx + dx)); ctx.strokeStyle = 'rgba(110,50,75,0.25)'; ctx.lineWidth = w * 1.1; ctx.lineCap = 'round'; ctx.stroke(); ctx.restore();
     yarnStroke(ctx, strand(cx - dx, cx + dx), w, Yf, { shadow: false });

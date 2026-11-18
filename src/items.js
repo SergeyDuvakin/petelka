@@ -41,8 +41,8 @@
         const two = r + 1 < H && cablePairs(tex, r + 1, W).includes(c);
         const a2 = two ? getE(r + 1, c) : null, b2 = two ? getE(r + 1, c + 1) : null;
         const full = two && a2 && b2 && isFlat(r + 1, c) && isFlat(r + 1, c + 1);
-        const top = full ? yB - 2 * h - 0.15 * h : yB - 1.02 * h;
-        ST.drawCablePair(ctx, cx, yB, s, h, P.yarn(a.code), P.yarn(b.code), [yB + 0.05 * h, top]);
+        const top = full ? yB - 2 * h : yB - 1.02 * h;
+        ST.drawCablePair(ctx, cx, yB, s, h, P.yarn(a.code), P.yarn(b.code), [yB + (r === runStart ? 0.05 * h : 0), top]);
       }
     }
   }
@@ -144,7 +144,7 @@
     tassel_tip: { post(c2, g) { const c = g.botCenterCol; tassel(c2, g.colX(c) + (g.W % 2 ? 0 : g.s / 2), g.botY(c) + g.s * 0.05, g.s * 1.5, g.Yacc, g.s, 7); } },
     tassel_bottom: { post(c2, g) { const x = g.cx, y = g.castEdge; ST.yarnStroke(c2, [[x, y - g.s * 0.1], [x + g.s * 0.05, y + g.s * 0.35], [x, y + g.s * 0.6]], g.s * 0.16, g.Yacc, {}); tassel(c2, x, y + g.s * 0.6, g.s * 1.7, g.Yacc, g.s * 1.2, 9); } },
     pompom: { post(c2, g) { pompom(c2, g.cx, g.yTop - g.s * 0.55, g.s * 1.1, g.Yacc, 3); } },
-    pompom_toe: { post(c2, g) { const c = Math.min(g.W - 3, Math.round(g.W * 0.72)); pompom(c2, g.colX(c), g.topY(c) + g.s * 0.3, g.s * 0.95, g.Yacc, 6); } },
+    pompom_toe: { post(c2, g) { const c = Math.min(g.W - 3, Math.round(g.W * 0.72)); pompom(c2, g.colX(c), g.topY(c) + g.s * 0.2, g.s * 1.25, g.Yacc, 6); } },
     beret_shade: { fab: true, post(c2, g) { volume(c2, g, g.padX, g.yTop, g.padX + g.W * g.s, g.yOf(1), 1.2, true); } },
     fringe_top: { post(c2, g) { const Yc = g.Ycast, s = g.s; for (let i = 0; i < g.W * 2; i++) { const c = i >> 1; if (g.topRow(c) !== g.H - 1) continue; const x = g.padX + (i + 0.5) * s / 2, y = g.topY(c) + s * 0.2, L = s * (0.95 + ((i * 41) % 7) / 30);
       const sw = ((i * 29) % 5 - 2) * s * 0.03; ST.yarnStroke(c2, [[x, y], [x + sw * 0.5, y - L * 0.5], [x + sw, y - L]], s * 0.15, Yc, { shadow: false }); ST.yarnStroke(c2, [[x + s * 0.06, y], [x + s * 0.06 - sw * 0.4, y - L * 0.55], [x + s * 0.05 - sw, y - L * 0.95]], s * 0.13, Yc, { shadow: false, dim: 0.14 }); } } },
