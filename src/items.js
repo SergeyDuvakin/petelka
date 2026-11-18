@@ -142,14 +142,59 @@
     puffy: { fab: true, post(c2, g) { volume(c2, g, g.padX, g.yTop, g.padX + g.W * g.s, g.castEdge, 1, true); } },
     heeltoe: { fab: true, post(c2, g) { const s = g.s, y = g.yOf(1); volume(c2, g, g.padX + g.W * s - 2.8 * s, y - 1.6 * g.h, g.padX + g.W * s + 0.6 * s, g.castEdge + s * 0.3, 1.1, true); volume(c2, g, g.padX - 0.8 * s, y - 1.4 * g.h, g.padX + 2.4 * s, g.castEdge + s * 0.3, 1.1, true); } },
     tassel_tip: { post(c2, g) { const c = g.botCenterCol; tassel(c2, g.colX(c) + (g.W % 2 ? 0 : g.s / 2), g.botY(c) + g.s * 0.05, g.s * 1.5, g.Yacc, g.s, 7); } },
-    tassel_bottom: { post(c2, g) { const x = g.cx, y = g.castEdge; ST.yarnStroke(c2, [[x, y - g.s * 0.1], [x + g.s * 0.05, y + g.s * 0.35], [x, y + g.s * 0.6]], g.s * 0.16, g.Yacc, {}); tassel(c2, x, y + g.s * 0.6, g.s * 1.3, g.Yacc, g.s, 9); } },
-    pompom: { post(c2, g) { pompom(c2, g.cx, g.yTop - g.s * 0.55, g.s * 0.95, g.Yacc, 3); } },
+    tassel_bottom: { post(c2, g) { const x = g.cx, y = g.castEdge; ST.yarnStroke(c2, [[x, y - g.s * 0.1], [x + g.s * 0.05, y + g.s * 0.35], [x, y + g.s * 0.6]], g.s * 0.16, g.Yacc, {}); tassel(c2, x, y + g.s * 0.6, g.s * 1.7, g.Yacc, g.s * 1.2, 9); } },
+    pompom: { post(c2, g) { pompom(c2, g.cx, g.yTop - g.s * 0.55, g.s * 1.1, g.Yacc, 3); } },
+    pompom_toe: { post(c2, g) { const c = Math.min(g.W - 3, Math.round(g.W * 0.72)); pompom(c2, g.colX(c), g.topY(c) + g.s * 0.3, g.s * 0.95, g.Yacc, 6); } },
+    beret_shade: { fab: true, post(c2, g) { volume(c2, g, g.padX, g.yTop, g.padX + g.W * g.s, g.yOf(1), 1.2, true); } },
+    fringe_top: { post(c2, g) { const Yc = g.Ycast, s = g.s; for (let i = 0; i < g.W * 2; i++) { const c = i >> 1; if (g.topRow(c) !== g.H - 1) continue; const x = g.padX + (i + 0.5) * s / 2, y = g.topY(c) + s * 0.2, L = s * (0.95 + ((i * 41) % 7) / 30);
+      const sw = ((i * 29) % 5 - 2) * s * 0.03; ST.yarnStroke(c2, [[x, y], [x + sw * 0.5, y - L * 0.5], [x + sw, y - L]], s * 0.15, Yc, { shadow: false }); ST.yarnStroke(c2, [[x + s * 0.06, y], [x + s * 0.06 - sw * 0.4, y - L * 0.55], [x + s * 0.05 - sw, y - L * 0.95]], s * 0.13, Yc, { shadow: false, dim: 0.14 }); } } },
+    tassel_corners: { post(c2, g) { const s = g.s, y = g.topY(0) + s * 0.35; tassel(c2, g.colX(0) - s * 0.1, y, s * 1.3, g.Yacc, s, 11, 0.35); tassel(c2, g.colX(g.W - 1) + s * 0.1, y, s * 1.3, g.Yacc, s, 12, -0.35); } },
+    buttons_band: { post(c2, g) { for (const [r, c] of (g.def.buttons || [])) button(c2, g.colX(c), g.yOf(r) + g.h * 0.12, g.s * 0.31, [244, 236, 226], g.Yacc); } },
+    inner: { pre(c2, g) { // изнанка/спинка в вырезе, разрезе кардигана и в кольце снуда
+      const { W, H, s, h } = g, m = (r, c) => r >= 0 && r < H && c >= 0 && c < W && !g.none(r, c);
+      const cells = [];
+      for (let c = 0; c < W; c++) for (let r = 0; r < H; r++) {
+        if (m(r, c)) continue;
+        let L = false, R = false; for (let k = c - 1; k >= 0; k--) if (m(r, k)) { L = true; break; } for (let k = c + 1; k < W; k++) if (m(r, k)) { R = true; break; }
+        if (!L || !R) continue;
+        let up = r; while (up + 1 < H && !m(up + 1, c)) up++; let dn = r; while (dn - 1 >= 0 && !m(dn - 1, c)) dn--;
+        const top = up === H - 1, closedUp = up < H - 1, closedDn = dn > 0;
+        if (!(top || (closedUp && closedDn))) continue;
+        cells.push([r, c, r === up]);
+      }
+      // спинка изнутри: те же петли основного цвета, приглушённые тенью; у верхнего края — глубже
+      const code = g.mainCode;
+      for (const [r, c, topCell] of cells) ST.drawSprite(c2, g.colX(c), g.yOf(r) + (topCell && r === H - 1 ? h * 0.3 : 0), s, h, code, 1 + (r * 5 + c) % 4, g.dpr);
+      c2.save(); c2.globalCompositeOperation = 'source-atop';
+      for (const [r, c, topCell] of cells) { const y0 = g.yOf(r) - h * 0.7, y1 = g.yOf(r) + h * 0.7, gr = c2.createLinearGradient(0, y0, 0, y1);
+        gr.addColorStop(0, `rgba(80,35,55,${topCell ? 0.55 : 0.4})`); gr.addColorStop(1, 'rgba(80,35,55,0.32)'); c2.fillStyle = gr; c2.fillRect(g.colX(c) - s * 0.7, y0, s * 1.4, y1 - y0); }
+      c2.restore(); } },
+    teapot: { pre(c2, g) { const s = g.s, xl = g.padX + s * 0.4, xr = g.padX + g.W * s - s * 0.4, yb = g.castEdge, cer = [250, 244, 240], cerD = [206, 188, 190];
+      c2.save(); const gs = c2.createLinearGradient(xl - s * 2, 0, xl, 0); gs.addColorStop(0, rgb(cerD)); gs.addColorStop(0.5, rgb(cer)); gs.addColorStop(1, rgb(cerD));
+      c2.fillStyle = gs; c2.beginPath(); c2.moveTo(xl, yb - s * 1.0); c2.quadraticCurveTo(xl - s * 1.2, yb - s * 1.2, xl - s * 1.75, yb - s * 2.9); c2.lineTo(xl - s * 1.3, yb - s * 3.0); c2.quadraticCurveTo(xl - s * 0.9, yb - s * 2.1, xl, yb - s * 2.2); c2.closePath(); c2.fill();
+      c2.strokeStyle = rgb(cerD, 0.9); c2.lineWidth = 1; c2.stroke();
+      c2.lineWidth = s * 0.44; c2.strokeStyle = rgb(cerD); c2.beginPath(); c2.ellipse(xr + s * 0.2, yb - s * 2.0, s * 0.95, s * 1.05, 0, -1.5, 1.5); c2.stroke();
+      c2.lineWidth = s * 0.28; c2.strokeStyle = rgb(cer); c2.stroke();
+      c2.fillStyle = 'rgba(130,70,90,0.2)'; c2.beginPath(); c2.ellipse(g.cx, yb + s * 0.55, g.W * s * 0.6, s * 0.3, 0, 0, 6.283); c2.fill();
+      const gb = c2.createLinearGradient(0, yb, 0, yb + s * 0.5); gb.addColorStop(0, rgb(cer)); gb.addColorStop(1, rgb(cerD)); c2.fillStyle = gb; c2.beginPath(); c2.ellipse(g.cx, yb + s * 0.35, g.W * s * 0.56, s * 0.28, 0, 0, 6.283); c2.fill(); c2.restore(); } },
+
     pompom_small: { post(c2, g) { const c = Math.min(g.W - 2, Math.round(g.W * 0.66)); pompom(c2, g.colX(c), g.topY(c) + g.s * 0.15, g.s * 0.55, g.Yacc, 5); } },
     stalk: { post(c2, g) { const x = g.cx, y = g.yTop + g.s * 0.2, s = g.s; ST.yarnStroke(c2, [[x, y], [x + s * 0.05, y - s * 0.35], [x + s * 0.25, y - s * 0.62], [x + s * 0.42, y - s * 0.7]], s * 0.3, g.Ymain, {}); } },
-    twist: { post(c2, g) { const s = g.s, x = g.cx, y0 = g.yTop - g.h * 0.05, y1 = g.castEdge + g.h * 0.05, Yc = g.Ymain;
-      c2.save(); c2.fillStyle = 'rgba(120,55,80,0.22)'; c2.fillRect(x - s * 0.95, y0, s * 0.18, y1 - y0); c2.fillRect(x + s * 0.77, y0, s * 0.18, y1 - y0); c2.restore();
-      const n = Math.max(3, Math.round((y1 - y0) / (s * 0.55)));
-      for (let i = 0; i < n; i++) { const ya = y0 + (y1 - y0) * i / n, yb = y0 + (y1 - y0) * (i + 1) / n; ST.yarnStroke(c2, [[x - s * 0.72, ya + (yb - ya) * 0.15], [x, ya + (yb - ya) * 0.55], [x + s * 0.72, yb - (yb - ya) * 0.1]], s * 0.5, Yc, { shadow: i === n - 1, dim: i % 2 ? 0.1 : 0 }); } } },
+    twist: { fab: true, post(c2, g) { // перекрут по центру: ткань стянута, узел — объёмная обмотка с перекрещенными складками
+      const s = g.s, x = g.cx, y0 = g.yTop + g.h * 0.1, y1 = g.castEdge - g.h * 0.05, ym = (y0 + y1) / 2, Hh = y1 - y0, Yc = g.Ymain;
+      c2.save(); c2.globalCompositeOperation = 'source-atop';
+      const gp = c2.createLinearGradient(x - s * 2.6, 0, x + s * 2.6, 0); gp.addColorStop(0, 'rgba(120,50,80,0)'); gp.addColorStop(0.36, 'rgba(120,50,80,0.28)'); gp.addColorStop(0.5, 'rgba(120,50,80,0.4)'); gp.addColorStop(0.64, 'rgba(120,50,80,0.28)'); gp.addColorStop(1, 'rgba(120,50,80,0)');
+      c2.fillStyle = gp; c2.fillRect(x - s * 2.6, y0 - s, s * 5.2, Hh + 2 * s);
+      c2.strokeStyle = 'rgba(110,45,70,0.35)'; c2.lineWidth = Math.max(1, s * 0.07); c2.lineCap = 'round';
+      for (const d of [-1, 1]) for (let k = -2; k <= 2; k++) { c2.beginPath(); c2.moveTo(x + d * s * 0.7, ym + k * Hh * 0.12); c2.quadraticCurveTo(x + d * s * 1.4, ym + k * Hh * 0.2, x + d * s * 2.1, ym + k * Hh * 0.3); c2.stroke(); }
+      c2.restore();
+      const kw = s * 0.9, kh = Hh * 0.82;
+      c2.save(); c2.fillStyle = 'rgba(110,45,70,0.28)'; c2.beginPath(); c2.ellipse(x + s * 0.08, ym + s * 0.12, kw * 1.05, kh * 0.62, 0, 0, 6.283); c2.fill();
+      const gr = c2.createLinearGradient(x - kw, 0, x + kw, 0); gr.addColorStop(0, rgb(Yc.cDark)); gr.addColorStop(0.35, rgb(Yc.cLight)); gr.addColorStop(0.62, rgb(Yc.cBase)); gr.addColorStop(1, rgb(Yc.cDark));
+      c2.fillStyle = gr; c2.beginPath(); c2.ellipse(x, ym, kw, kh * 0.6, 0, 0, 6.283); c2.fill(); c2.restore();
+      const w = s * 0.42;
+      ST.yarnStroke(c2, [[x - kw * 0.85, ym - kh * 0.42], [x - kw * 0.1, ym - kh * 0.05], [x + kw * 0.85, ym + kh * 0.42]], w, Yc, { shadow: true });
+      ST.yarnStroke(c2, [[x - kw * 0.85, ym + kh * 0.42], [x + kw * 0.1, ym + kh * 0.05], [x + kw * 0.85, ym - kh * 0.42]], w, Yc, { shadow: true, dim: 0.06 }); } },
     buttons_center: { post(c2, g) { const x = g.padX + g.W * g.s / 2; for (let r = 0; r < g.H - 2; r += 2) button(c2, x, g.yOf(r) + g.h * 0.15, g.s * 0.27, [238, 226, 214], g.Yacc); } },
     buttons_top: { post(c2, g) { const r = g.H - 2; for (const k of [-1, 0, 1]) button(c2, g.cx + k * g.s * 2, g.yOf(r) + g.h * 0.2, g.s * 0.3, [240, 228, 218], g.Yacc); } },
     mug: { pre(c2, g) { const s = g.s, x0 = g.padX - s * 0.22, x1 = g.padX + g.W * s + s * 0.22, yT = g.yTop - s * 0.75, yB = g.castEdge + s * 0.55, cer = [250, 244, 240], cerD = [214, 196, 196];
@@ -176,9 +221,9 @@
       for (const [a, b] of [[1, 2.6], [W - 2.6, W - 1]]) { const xa = g.padX + a * s, xb = g.padX + b * s; ST.yarnStroke(c2, [[xa, y], [xa - s * 0.05, y - hh * 0.75], [(xa + xb) / 2, y - hh], [xb + s * 0.05, y - hh * 0.75], [xb, y]], s * 0.36, Y2, {}); } } },
     cord_top: { post(c2, g) { const s = g.s, y = g.yTop + s * 0.05, x0 = g.padX - s * 0.9, x1 = g.padX + g.W * s + s * 0.9; const pts = []; for (let i = 0; i <= 14; i++) { const t = i / 14; pts.push([x0 + (x1 - x0) * t, y - s * 0.25 + Math.sin(t * Math.PI) * s * 0.12]); }
       ST.yarnStroke(c2, pts, s * 0.2, g.Yacc, {}); for (const x of [x0, x1]) { const gr = c2.createRadialGradient(x - s * 0.05, y - s * 0.3, 1, x, y - s * 0.25, s * 0.2); gr.addColorStop(0, rgb(g.Yacc.cLight)); gr.addColorStop(1, rgb(g.Yacc.cDark)); c2.fillStyle = gr; c2.beginPath(); c2.arc(x, y - s * 0.25, s * 0.2, 0, 6.283); c2.fill(); } } },
-    cap: { post(c2, g) { const s = g.s, x = g.cx, y = g.yTop + s * 0.1, w = s * 1.5, hh = s * 0.55;
-      c2.save(); c2.strokeStyle = rgb(GOLD.cDark); c2.lineWidth = Math.max(1, s * 0.08); c2.beginPath(); c2.ellipse(x, y - hh - s * 0.25, s * 0.22, s * 0.28, 0, 0, 6.283); c2.stroke();
-      c2.beginPath(); c2.moveTo(x, y - hh - s * 0.53); c2.lineTo(x, y - hh - s * 1.3); c2.strokeStyle = 'rgba(150,110,90,0.6)'; c2.lineWidth = 1; c2.stroke();
+    cap: { post(c2, g) { const s = g.s, x = g.cx, y = g.yTop + s * 0.15, w = s * 2.3, hh = s * 0.8;
+      c2.save(); c2.strokeStyle = rgb(GOLD.cDark); c2.lineWidth = Math.max(1, s * 0.08); c2.beginPath(); c2.ellipse(x, y - hh - s * 0.3, s * 0.3, s * 0.36, 0, 0, 6.283); c2.stroke();
+      c2.beginPath(); c2.moveTo(x, y - hh - s * 0.66); c2.lineTo(x, y - hh - s * 1.6); c2.strokeStyle = 'rgba(150,110,90,0.6)'; c2.lineWidth = 1; c2.stroke();
       const gr = c2.createLinearGradient(x - w / 2, 0, x + w / 2, 0); gr.addColorStop(0, rgb(GOLD.cDark)); gr.addColorStop(0.35, rgb(GOLD.cLight)); gr.addColorStop(0.6, rgb(GOLD.cBase)); gr.addColorStop(1, rgb(GOLD.cDark));
       c2.fillStyle = gr; c2.beginPath(); c2.moveTo(x - w / 2, y); c2.lineTo(x - w * 0.42, y - hh); c2.lineTo(x + w * 0.42, y - hh); c2.lineTo(x + w / 2, y); c2.closePath(); c2.fill();
       c2.strokeStyle = rgb(GOLD.cDark, 0.6); c2.lineWidth = Math.max(0.7, s * 0.04); for (let i = 1; i < 6; i++) { const t = i / 6; c2.beginPath(); c2.moveTo(x - w / 2 + w * t, y - 1); c2.lineTo(x - w * 0.42 + w * 0.84 * t, y - hh + 1); c2.stroke(); }
@@ -198,7 +243,8 @@
   };
 
   /* Готовая вещь целиком: getE(r, c) → {code, kind, seed} | null (вне силуэта); ряды снизу вверх. */
-  function render(def, getE, castCode, s, h, dpr) {
+  function render(def, getE0, castCode, s, h, dpr) {
+    const getE = (r, c) => (r < 0 || r >= def.height || c < 0 || c >= def.width) ? null : getE0(r, c);
     const W = def.width, H = def.height, padX = 1.3 * s, padT = 2.3 * s, padB = 1.9 * s;
     const w = W * s + padX * 2, hh = padT + 0.4 * h + (H - 1) * h + 0.67 * h + h + padB;
     const tex = def.tex ? def.tex.map(r => r.trim().split(/\s+/)) : null;
@@ -220,7 +266,7 @@
     const g = { W, H, s, h, padX, padT, w, hh, colX, yOf, none, topRow, botRow, def,
       cx: padX + W * s / 2, yTop: Math.min(...[...Array(W).keys()].map(c => yOf(topRow(c)))) - 0.45 * h,
       topY: (c) => yOf(topRow(c)) - 0.45 * h, botY: (c) => yOf(botRow(c) - 1) + h * 0.35, castEdge: castY, botCenterCol,
-      faceY: yOf(faceR), Ymain: P.yarn(main), Yacc: P.yarn(acc), Ycast: P.yarn(castCode) };
+      faceY: yOf(faceR), mainCode: main, dpr, Ymain: P.yarn(main), Yacc: P.yarn(acc), Ycast: P.yarn(castCode) };
     const deco = (def.deco || []).filter(d => DECO[d]);
     const mk = () => { const c = document.createElement('canvas'); c.width = Math.ceil(w * dpr); c.height = Math.ceil(hh * dpr); const x = c.getContext('2d'); x.scale(dpr, dpr); return [c, x]; };
     const [fab, x] = mk();
