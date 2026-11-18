@@ -12,12 +12,15 @@
     W: 390, H: 844, dpr: 1, st: 0, sb: 0, now: 0, paused: false, manual: 0,
     levelIdx: 0, level: null, vis: null, queue: [], gate: 0, active: [],
     particles: new S.Particles(), banners: [], fps: [], lastTap: 0, firstTapDone: false,
-    wardrobeCount: 0, wardrobeBump: new Spring(0, 260, 0.35), card: null, fade: 0, fadeT: null,
+    wardrobeCount: 0, items: [], ward: null, wardrobeBump: new Spring(0, 260, 0.35), card: null, fade: 0, fadeT: null,
     deadEndAt: 0, deadEnd: false, hintBall: -1, wrongStreak: 0, stats: { taps: 0, wrong: 0 },
   });
   const LEVELS = qs.has('demo') && window.PETELKA_DEMO ? window.PETELKA_DEMO : window.PETELKA_LEVELS;
   const SAVE_KEY = qs.has('demo') ? 'petelka.demo' : 'petelka.m0';
-  const save = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ level: G.levelIdx, wardrobe: G.wardrobeCount, sound: A.enabled })); } catch (e) {} };
+  const save = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ level: G.levelIdx, wardrobe: G.wardrobeCount, sound: A.enabled, items: G.items })); } catch (e) {} };
+  const CAT = window.PETELKA_CATALOG || { shelves: [], items: [], colorways: {} };
+  const catItem = (id) => CAT.items.find(i => i.id === id);
+  const shelfName = (id) => { const sh = CAT.shelves.find(x => x.id === id); return sh ? sh.name : 'Шкаф'; };
   const load = () => { try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; } };
 
   // ---------- раскладка ----------
@@ -108,7 +111,9 @@
     A.unlock();
     if (!G.musicStarted && A.enabled) { G.musicStarted = true; A.startMusic(); }
     if (G.card) { const b = G.card.btn; if (G.card.shown > 0.6 && x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) nextLevel(); return; }
+    if (G.ward) { wardTap(x, y); return; }
     if (G.vis.item) return;
+    if (Math.hypot(x - (G.W - 34), y - (G.st + 36)) < 26) { openWard(); return; }
     // звук
     if (Math.hypot(x - 32, y - (G.st + 36)) < 24) { A.setEnabled(!A.enabled); if (A.enabled && !G.musicStarted) { G.musicStarted = true; A.startMusic(); } save(); return; }
     // распустить
@@ -278,6 +283,8 @@
     G.banners = G.banners.filter(b => G.now - b.t0 < b.life);
     if (v.item) stepItem(dt);
     if (G.card) G.card.shown = Math.min(1, G.card.shown + dt * 3);
+    if (G.ward) { const w = G.ward; w.shown = w.closing ? Math.max(0, w.shown - dt * 4) : Math.min(1, w.shown + dt * 3.5); if (w.closing && w.shown <= 0) G.ward = null;
+      else { w.scroll += w.vel * dt; w.vel *= Math.pow(0.02, dt); const mx = Math.max(0, w.contentH - w.viewH); if (!w.drag) { if (w.scroll < 0) w.scroll += (0 - w.scroll) * Math.min(1, dt * 12); if (w.scroll > mx) w.scroll += (mx - w.scroll) * Math.min(1, dt * 12); } } }
     if (G.fadeT != null) { G.fadeT += dt; const k = G.fadeT / 0.5; G.fade = k < 0.5 ? E.inOutSine(k * 2) : 1 - E.inOutSine((k - 0.5) * 2); if (k >= 0.5 && !G.fadeSwapped) { G.fadeSwapped = true; G.fadeSwap(); } if (k >= 1) { G.fadeT = null; G.fade = 0; } }
     // нить
     const end = yarnEnd();
@@ -311,6 +318,7 @@
     drawGhost();
     if (G.vis.item) drawItem();
     if (G.card) drawCard();
+    if (G.ward) drawWard();
     if (G.fade > 0) { ctx.fillStyle = `rgba(255,244,246,${G.fade})`; ctx.fillRect(0, 0, W, H); }
   }
 
@@ -528,6 +536,8 @@
     // закрытые петли по краю силуэта — косая кромка над ними
     for (let r = 0; r < L.H - 1; r++) for (let c = 0; c < L.W; c++) if (L.cells[r + 1][c].none && !L.cells[r][c].none && v.st[r][c] && v.rowDoneT[r + 1] != null && G.now - v.rowDoneT[r + 1] > 0.2) capEdge(r, c);
     for (let r = 0; r < L.H; r++) for (let c = 0; c < L.W; c++) { const e = v.st[r][c]; if (e) drawOne(r, c, e); }
+    // косы — витые жгуты поверх изнаночной подложки, когда ряд снят с натяжения
+    if (G.tex) P.Items.drawCables(ctx, L.def, G.tex, (r, c) => { const e = v.st[r][c]; return e && !e.unknitT0 ? e : null; }, colX, rowNormalY, s, h, (r, c) => { const e = v.st[r][c]; const st2 = stitchState(r, c, e); return st2.stretch < 0.3 * h && st2.progress >= 1; });
     // шишечки — отдельным проходом поверх соседних рядов (иначе их прикрывают ножки ряда выше)
     if (G.tex) for (let r = 0; r < L.H; r++) for (let c = 0; c < L.W; c++) {
       const e = v.st[r][c]; if (!e || e.kind !== 'b') continue; const stt = stitchState(r, c, e); if (stt.stretch > 0.5 * h) continue;
@@ -631,27 +641,19 @@
   }
 
   // ---------- изделие готово ----------
+  function renderDef(def, s, dpr, codes) {
+    const rows = def.rows.map(r => r.trim().split(/\s+/)); const tex = def.tex ? def.tex.map(r => r.trim().split(/\s+/)) : null;
+    const first = def.balls[0].color; const idx = LEVELS.indexOf(def);
+    const getE = (r, c) => { const t = rows[r][c]; if (t === '-') return null; let code = codes ? codes[r][c] : (t === '?' ? first : t.split('/')[0]);
+      code = P.yarnAt(code, (r * def.width + (def.width - 1 - c)) / Math.max(1, def.width * def.height - 1));
+      return { code, kind: tex && tex[r][c] !== '.' ? tex[r][c] : 'k', seed: 1 + ((r * 7 + c * 13 + idx * 5) % 4) }; };
+    const castCode = def.balls.some(b => b.color === 'K') ? 'K' : def.balls[0].color;
+    return P.Items.render(def, getE, castCode, s, s * 0.78, dpr);
+  }
   function snapshotFabric() {
-    const L = G.level, s = G.s, h = G.h; const pad = 12;
-    const w = L.W * s + pad * 2, hh = (L.H + 1) * h + h + pad * 2;
-    const c = document.createElement('canvas'); c.width = w * G.dpr; c.height = hh * G.dpr;
-    const x = c.getContext('2d'); x.scale(G.dpr, G.dpr);
-    const yOf = (r) => pad + h * 0.4 + (L.H - 1 - r) * h;
-    for (let cc = 0; cc < L.W; cc++) ST.drawSprite(x, pad + (cc + 0.5) * s, yOf(-1) - h * 0.45, s, h, G.vis.cast[cc].code, G.vis.cast[cc].seed, G.dpr);
-    for (let r = 0; r < L.H; r++) for (let cc = 0; cc < L.W; cc++) { const e = G.vis.st[r][cc]; ST.drawSprite(x, pad + (cc + 0.5) * s, yOf(r), s, h, e.code, e.seed, G.dpr, e.kind); }
-    for (let r = 0; r < L.H; r++) for (let cc = 0; cc < L.W; cc++) { const e = G.vis.st[r][cc]; if (e.kind === 'b') ST.drawBobble(x, pad + (cc + 0.5) * s, yOf(r) + 0.42 * h, 0.4 * s, P.yarn(e.code), 1, e.seed); }
-    drawEdge(x, yOf(-1) + h * 0.55 + h * 1.12 - h, G.vis.castCode ? Y[G.vis.castCode] : Y.K, pad, s);
-    drawEdge(x, yOf(L.H - 1) + h * 0.05, P.yarn(G.vis.st[L.H - 1][0].code), pad, s);
-    // бахрома для шарфа
-    if (L.def.item === 'scarf') {
-      const fr = Y[G.vis.castCode];
-      for (let cc = 0; cc < L.W * 2; cc++) {
-        const fx = pad + (cc + 0.5) * s / 2, fy = yOf(-1) + h * 0.75;
-        x.strokeStyle = rgb(fr.cDark); x.lineWidth = 3.2; x.beginPath(); x.moveTo(fx, fy); x.quadraticCurveTo(fx + 2, fy + 8, fx + (cc % 2 ? 2 : -1), fy + 14); x.stroke();
-        x.strokeStyle = rgb(fr.cBase); x.lineWidth = 2; x.stroke();
-      }
-    }
-    c._w = w; c._h = hh; c._fy = yOf(L.H - 1) - h * 0.4 - pad + (G.yn - (G.vis.Fy.v - (L.H - 1) * h));
+    const L = G.level, v = G.vis;
+    const R = P.Items.render(L.def, (r, c) => v.st[r][c], v.castCode, G.s, G.h, G.dpr);
+    const c = R.full; c._w = R.w; c._h = R.h; c._fabric = R.fabric; c._ox = R.ox; c._oy = R.oy;
     return c;
   }
   function stepItem(dt) {
@@ -660,10 +662,12 @@
     v.needlesOut = E.inCubic(clamp(t / 0.5, 0, 1));
     if (t > 0.55 && !it.snap) {
       it.snap = snapshotFabric(); A.whoosh();
-      it.x0 = G.fx - 12; it.y0 = G.yn - G.h * 0.4 - 12;
+      it.x0 = G.fx - it.snap._ox; it.y0 = rowNormalY(G.level.H - 1) - G.h * 0.4 - it.snap._oy;
     }
     if (t > 1.95 && !it.landed) {
       it.landed = true; G.wardrobeCount++; G.wardrobeBump.vel = 9; A.itemDone();
+      { const L = G.level; const codes = G.vis.st.map(row => row.map(e => e ? e.code.split('@')[0] : null));
+        G.items = G.items.filter(x => x.lv !== L.def.id); G.items.push({ lv: L.def.id, item: L.def.item, cw: L.def.cw, codes }); }
       G.particles.burst(G.W - 34, G.st + 36, 18, { col: [255, 236, 242], speed: 70, life: 0.9, r: 2, g: 30, star: true });
       save();
     }
@@ -688,6 +692,8 @@
     ctx.translate(-c._w / 2, -c._h / 4);
     ctx.shadowColor = 'rgba(120,60,80,0.28)'; ctx.shadowBlur = 8 + lift * 14; ctx.shadowOffsetY = 4 + lift * 10;
     const half = c._h / 2;
+    // отделка (помпон, пуговицы, кисти…) мягко проявляется, пока вещь поднимается
+    if (t < 0.3) { const k = E.inOutSine(t / 0.3); ctx.globalAlpha = 1 - k; ctx.drawImage(c._fabric, 0, 0, c._w, c._h); ctx.globalAlpha = k; ctx.drawImage(c, 0, 0, c._w, c._h); ctx.globalAlpha = 1; ctx.restore(); return; }
     // верхняя половина
     ctx.drawImage(c, 0, 0, c.width, c.height / 2, 0, 0, c._w, half);
     // нижняя половина складывается вверх (сжатие по Y + затемнение)
@@ -701,6 +707,57 @@
       ctx.restore();
     }
     ctx.restore();
+  }
+  // ---------- шкаф: полки по категориям и коллекции расцветок ----------
+  const thumbCache = new Map();
+  function thumb(def, codes, size) {
+    const key = def.id + '|' + (codes ? 'k' : 'g') + '|' + size + '@' + G.dpr; let c = thumbCache.get(key); if (c) return c;
+    const s = size, R = renderDef(def, s, G.dpr, codes ? codes.map(r => r.map(x => x || 'K')) : null);
+    c = R.full; c._w = R.w; c._h = R.h; thumbCache.set(key, c); return c;
+  }
+  function openWard() { A.unlock(); G.ward = { shown: 0, scroll: 0, vel: 0, drag: null, contentH: 0, viewH: 0 }; }
+  function wardTap(x, y) { const w = G.ward; if (!w || w.shown < 0.5) return; if (Math.hypot(x - w.cx, y - w.cy) < 26 || y < w.y0 - 6 || y > w.y1 + 6) w.closing = true; }
+  function drawWard() {
+    const w = G.ward, k = E.outCubic(w.shown);
+    ctx.fillStyle = `rgba(110,60,80,${0.25 * k})`; ctx.fillRect(0, 0, G.W, G.H);
+    const x0 = 14, y0 = G.st + 8, pw = G.W - 28, ph = G.H - G.st - 8 - G.sb - 10;
+    w.y0 = y0; w.y1 = y0 + ph; w.cx = x0 + pw - 28; w.cy = y0 + 30;
+    ctx.save(); ctx.globalAlpha = k; ctx.translate(0, (1 - k) * 40);
+    panel(x0, y0, pw, ph, 26);
+    text('Шкаф', G.W / 2, y0 + 32, 32, '#A0607A', 'Marck', 400);
+    const total = CAT.items.length, gotItems = new Set(G.items.map(i => i.item)).size, gotCw = new Set(G.items.map(i => i.item + '/' + i.cw)).size, allCw = CAT.items.reduce((a, i) => a + i.cw.length, 0);
+    text(`${gotItems} из ${total} вещей · ${gotCw} из ${allCw} расцветок`, G.W / 2, y0 + 60, 13, TH.textSoft, 'Nunito', 700);
+    // крестик
+    ctx.strokeStyle = '#B07488'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(w.cx - 7, w.cy - 7); ctx.lineTo(w.cx + 7, w.cy + 7); ctx.moveTo(w.cx + 7, w.cy - 7); ctx.lineTo(w.cx - 7, w.cy + 7); ctx.stroke();
+    const vy = y0 + 78, vh = ph - 90; w.viewH = vh;
+    ctx.save(); ctx.beginPath(); ctx.rect(x0, vy, pw, vh); ctx.clip();
+    let y = vy - w.scroll; const slot = (pw - 24) / 4;
+    for (const sh of CAT.shelves) {
+      const its = CAT.items.filter(i => i.shelf === sh.id); if (!its.length) continue;
+      const got = its.filter(i => G.items.some(x => x.item === i.id)).length;
+      text(sh.name, x0 + 22, y + 14, 15, TH.text, 'Nunito', 800, 'left');
+      text(`${got}/${its.length}`, x0 + pw - 22, y + 14, 13, TH.textSoft, 'Nunito', 700, 'right');
+      const rowsN = Math.ceil(its.length / 4);
+      its.forEach((it, j) => {
+        const sx = x0 + 12 + (j % 4) * slot, sy = y + 28 + Math.floor(j / 4) * (slot + 24);
+        if (sy > vy + vh || sy + slot + 24 < vy) return;
+        ctx.beginPath(); ctx.roundRect(sx + 4, sy, slot - 8, slot, 14); ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fill(); ctx.strokeStyle = 'rgba(232,180,196,0.45)'; ctx.lineWidth = 1; ctx.stroke();
+        const mine = G.items.filter(x => x.item === it.id); const last = mine[mine.length - 1];
+        const def = last ? LEVELS.find(l => l.id === last.lv) : LEVELS.find(l => l.item === it.id);
+        if (def) {
+          const c = thumb(def, last ? last.codes : null, 10); const sc = Math.min((slot - 18) / c._w, (slot - 14) / c._h);
+          ctx.save(); if (!last) { ctx.globalAlpha = 0.16 * k; ctx.filter = 'grayscale(1)'; } else { ctx.shadowColor = 'rgba(120,60,80,0.2)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 3; }
+          ctx.drawImage(c, sx + slot / 2 - c._w * sc / 2, sy + slot / 2 - c._h * sc / 2, c._w * sc, c._h * sc); ctx.restore();
+        }
+        const ncw = new Set(mine.map(x => x.cw)).size;
+        text(it.name, sx + slot / 2, sy + slot + 9, 10.5, last ? TH.text : 'rgba(160,110,128,0.55)', 'Nunito', 700);
+        // бусинки коллекции расцветок
+        const n = it.cw.length, bw = 7; for (let q = 0; q < n; q++) { const bx = sx + slot / 2 + (q - (n - 1) / 2) * bw, by = sy + slot - 9; ctx.beginPath(); ctx.arc(bx, by, 2.3, 0, 6.283); ctx.fillStyle = q < ncw ? '#EE9BB2' : 'rgba(200,150,168,0.3)'; ctx.fill(); }
+      });
+      y += 28 + rowsN * (slot + 24) + 10;
+    }
+    w.contentH = y + w.scroll - vy;
+    ctx.restore(); ctx.restore();
   }
   function openCard(snap) {
     const L = G.level; const last = G.levelIdx >= LEVELS.length - 1;
@@ -718,27 +775,35 @@
     const iw = sn._w * sc, ih = sn._h * sc;
     ctx.save(); ctx.shadowColor = 'rgba(120,60,80,0.22)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 6;
     ctx.drawImage(sn, G.W / 2 - iw / 2, c.y + 96 + (maxH - ih) / 2, iw, ih); ctx.restore();
-    text(`${G.stats.taps - G.stats.wrong} петель · ${G.level.history.length >= 0 ? 'на полке «' + (L.def.item === 'mitten' ? 'Варежки' : 'Шарфы') + '»' : ''}`, G.W / 2, c.y + 296, 14, TH.textSoft, 'Nunito', 700);
+    text(`${G.stats.taps - G.stats.wrong} петель` + (L.def.cwName ? ` · расцветка «${L.def.cwName}»` : ''), G.W / 2, c.y + 290, 14, TH.textSoft, 'Nunito', 700);
+    if (L.def.shelf) { const ci = catItem(L.def.item); const got = new Set(G.items.filter(x => x.item === L.def.item).map(x => x.cw)).size;
+      text(`на полке «${shelfName(L.def.shelf)}» · ${got} из ${ci ? ci.cw.length : 1} расцветок`, G.W / 2, c.y + 312, 13, TH.textSoft, 'Nunito', 700); }
     const b = c.btn;
     ctx.save(); ctx.shadowColor = 'rgba(220,120,150,0.35)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 4;
     const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h); g.addColorStop(0, '#F7B9CA'); g.addColorStop(1, '#EC97AE');
     ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 25); ctx.fillStyle = g; ctx.fill(); ctx.restore();
-    text(c.last ? 'Сначала' : 'Дальше', G.W / 2, b.y + b.h / 2 + 1, 19, '#fff', 'Nunito', 800);
-    if (c.last) text('Это все уровни прототипа M0', G.W / 2, c.y + 318, 12.5, TH.textSoft, 'Nunito', 700);
+    text('Дальше', G.W / 2, b.y + b.h / 2 + 1, 19, '#fff', 'Nunito', 800);
+    if (c.last) text('Дальше — бесконечный режим', G.W / 2, c.y + 334, 12.5, TH.textSoft, 'Nunito', 700);
     ctx.restore();
   }
   function nextLevel() {
-    const nxt = G.card.last ? 0 : G.levelIdx + 1;
+    // после последнего уровня — бесконечный режим: случайный уровень из второй половины, не та же вещь
+    let nxt = G.levelIdx + 1;
+    if (LEVELS.length < 60) nxt = G.card.last ? 0 : nxt;
+    else if (G.card.last || G.endless) { G.endless = true; const cur = G.level.def.item; let k = 0; do { nxt = 40 + Math.floor(Math.random() * (LEVELS.length - 40)); k++; } while (k < 20 && LEVELS[nxt].item === cur); }
     G.fadeT = 0; G.fadeSwapped = false; G.fadeSwap = () => { G.card = null; startLevel(nxt); };
   }
 
   // ---------- запуск ----------
-  cv.addEventListener('pointerdown', (e) => { e.preventDefault(); onTap(e.clientX, e.clientY); }, { passive: false });
+  cv.addEventListener('pointerdown', (e) => { e.preventDefault(); if (G.ward && !G.ward.closing) { G.ward.drag = { y: e.clientY, s: G.ward.scroll, t: performance.now(), moved: false, ly: e.clientY }; return; } onTap(e.clientX, e.clientY); }, { passive: false });
+  cv.addEventListener('pointermove', (e) => { const w = G.ward; if (!w || !w.drag) return; const d = e.clientY - w.drag.y; if (Math.abs(d) > 6) w.drag.moved = true; w.scroll = w.drag.s - d; const now = performance.now(); w.vel = -(e.clientY - w.drag.ly) / Math.max(0.008, (now - w.drag.t) / 1000); w.drag.t = now; w.drag.ly = e.clientY; });
+  cv.addEventListener('pointerup', (e) => { const w = G.ward; if (!w || !w.drag) return; const moved = w.drag.moved; w.drag = null; if (!moved) { w.vel = 0; onTap(e.clientX, e.clientY); } });
+  cv.addEventListener('wheel', (e) => { if (G.ward) { G.ward.scroll += e.deltaY; } }, { passive: true });
   document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
   window.addEventListener('resize', layout);
   const saved = load();
   if (saved && saved.sound === false) A.setEnabled(false);
-  if (saved) G.wardrobeCount = saved.wardrobe || 0;
+  if (saved) { G.wardrobeCount = saved.wardrobe || 0; G.items = Array.isArray(saved.items) ? saved.items : []; }
   let startIdx = saved ? clamp(saved.level | 0, 0, LEVELS.length - 1) : 0;
   if (qs.get('level')) startIdx = clamp(parseInt(qs.get('level'), 10) - 1, 0, LEVELS.length - 1);
   layout(); startLevel(startIdx);
@@ -755,5 +820,8 @@
     pause: (v) => { G.paused = v; }, advance: (ms) => { G.manual = ms / 1000; },
     fpsStart: () => { G.fps = []; G.fpsOn = true; }, fpsStop: () => { G.fpsOn = false; const a = G.fps.slice(2); const avg = a.reduce((x, y) => x + y, 0) / a.length; const sorted = a.slice().sort((x, y) => x - y); return { frames: a.length, avgFps: 1 / avg, p95ms: sorted[Math.floor(a.length * 0.95)] * 1000, worstMs: sorted[a.length - 1] * 1000 }; },
     goto: (n) => startLevel(n - 1),
+    // предпросмотр готовой вещи без игры (для галерей/шкафа): ? → первый клубок, A/B → A
+    ward: () => openWard(), addItems: (n) => { for (let i = 0; i < n; i++) { const d = LEVELS[i]; G.items.push({ lv: d.id, item: d.item, cw: d.cw, codes: null }); } },
+    renderLevel: (i, s = 36, dpr = 2) => { const def = LEVELS[i]; const R = renderDef(def, s, dpr); return R.full.toDataURL('image/png'); },
   };
 })();

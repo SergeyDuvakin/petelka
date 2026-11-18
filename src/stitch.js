@@ -11,7 +11,7 @@
      / и \ — петли косы (наклонённая вытянутая «V» с глубокой тенью). На спице все виды выглядят как петля. */
   const LOOPY = { k: 1, b: 1, '/': 1, '\\': 1 };
   function geometry(s, h, stretch, seed, kind) {
-    if (kind === 'p' && stretch < 0.3 * h) return purlGeometry(s, h, stretch, seed);
+    if ((kind === 'p' || kind === 'c') && stretch < 0.3 * h) return purlGeometry(s, h, stretch, seed);
     if (kind === 'y' && stretch < 0.3 * h) return eyeletGeometry(s, h, stretch, seed);
     const r = rng(seed * 7919 + 13);
     const j = () => (r() - 0.5) * 0.035 * s;
@@ -93,6 +93,53 @@
     ctx.stroke(); ctx.restore();
   }
 
+  // нить произвольной формы тем же штрихом, что и петли (отделка, косы, шнуры, кисти)
+  function smoothPath(ctx, pts) {
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length - 1; i++) { const mx = (pts[i][0] + pts[i + 1][0]) / 2, my = (pts[i][1] + pts[i + 1][1]) / 2; ctx.quadraticCurveTo(pts[i][0], pts[i][1], mx, my); }
+    ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
+  }
+  function yarnStroke(ctx, pts, w, Y, o = {}) {
+    if (pts.length < 2) return;
+    ctx.save(); ctx.lineCap = o.cap || 'round'; ctx.lineJoin = 'round';
+    const P_ = () => { ctx.beginPath(); smoothPath(ctx, pts); };
+    if (o.shadow !== false) { ctx.save(); ctx.translate(w * 0.08, w * 0.18); P_(); ctx.strokeStyle = 'rgba(140,70,95,0.18)'; ctx.lineWidth = w * 1.1; ctx.stroke(); ctx.restore(); }
+    const dk = o.dim ? mix(Y.cDark, [90, 50, 60], o.dim) : Y.cDark, bs = o.dim ? mix(Y.cBase, Y.cDark, o.dim * 1.4) : Y.cBase;
+    P_(); ctx.strokeStyle = rgb(dk); ctx.lineWidth = w; ctx.stroke();
+    P_(); ctx.strokeStyle = rgb(bs); ctx.lineWidth = w * 0.82; ctx.stroke();
+    ctx.save(); ctx.translate(-w * 0.1, w * 0.08); P_(); ctx.strokeStyle = rgb(mix(bs, dk, 0.55), 0.4); ctx.lineWidth = w * 0.4; ctx.stroke(); ctx.restore();
+    ctx.save(); ctx.translate(w * 0.1, -w * 0.08); P_(); ctx.strokeStyle = rgb(mix(bs, Y.cLight, o.dim ? 0.4 : 0.9)); ctx.lineWidth = w * 0.26; ctx.stroke(); ctx.restore();
+    // скрутка
+    ctx.setLineDash([w * 0.1, w * 0.26]); P_(); ctx.strokeStyle = rgb(dk, 0.3); ctx.lineWidth = w * 0.7; ctx.stroke(); ctx.setLineDash([]);
+    if (Y.cFleck) { ctx.setLineDash([w * 0.08, w * 0.6, w * 0.15, w * 0.8]); P_(); ctx.strokeStyle = rgb(Y.cFleck, 0.6); ctx.lineWidth = w * 0.16; ctx.stroke(); ctx.setLineDash([]); }
+    if (Y.lurex) { ctx.setLineDash([w * 0.14, w * 0.3]); P_(); ctx.strokeStyle = rgb(hex(Y.lurex[0]), 0.85); ctx.lineWidth = Math.max(0.7, w * 0.1); ctx.stroke(); ctx.setLineDash([]); }
+    ctx.restore();
+  }
+  /* Коса (жгут): пара колонок «c c» на изнаночном фоне. Каждые 2 ряда — один перекрёст: задняя прядь (в тени)
+     и передняя прядь крест-накрест, S-образно; соседние перекрёсты в одну сторону складываются в витой жгут. */
+  function drawCablePair(ctx, cx, yB, s, h, Yf, Yb, part) {
+    const yT = yB - 2 * h, w = 0.9 * s, dx = 0.47 * s;
+    const pt = (x0, x1, t) => { const e = t * t * (3 - 2 * t); return [x0 + (x1 - x0) * e, yB + (yT - yB) * t]; };
+    const strand = (x0, x1) => { const pts = []; for (let i = 0; i <= 12; i++) pts.push(pt(x0, x1, i / 12)); return pts; };
+    ctx.save(); ctx.beginPath(); ctx.rect(cx - s * 1.1, part[1], s * 2.2, part[0] - part[1]); ctx.clip();
+    // углубление по бокам жгута
+    const gl = ctx.createLinearGradient(cx - s, 0, cx + s, 0); gl.addColorStop(0, 'rgba(110,50,75,0.22)'); gl.addColorStop(0.12, 'rgba(110,50,75,0)'); gl.addColorStop(0.88, 'rgba(110,50,75,0)'); gl.addColorStop(1, 'rgba(110,50,75,0.22)');
+    ctx.fillStyle = gl; ctx.fillRect(cx - s, yT, 2 * s, 2 * h);
+    yarnStroke(ctx, strand(cx + dx, cx - dx), w * 0.94, Yb, { dim: 0.3, shadow: false });
+    // тень передней пряди на задней
+    ctx.save(); ctx.translate(s * 0.06, h * 0.1); ctx.beginPath(); smoothPath(ctx, strand(cx - dx, cx + dx)); ctx.strokeStyle = 'rgba(110,50,75,0.25)'; ctx.lineWidth = w * 1.1; ctx.lineCap = 'round'; ctx.stroke(); ctx.restore();
+    yarnStroke(ctx, strand(cx - dx, cx + dx), w, Yf, { shadow: false });
+    // лицевые «V» по передней пряди — видно, что это вывязанные петли
+    ctx.lineCap = 'round'; ctx.lineWidth = Math.max(0.8, s * 0.045);
+    for (let i = 1; i < 6; i++) {
+      const t = i / 6, [px, py] = pt(cx - dx, cx + dx, t), [qx, qy] = pt(cx - dx, cx + dx, t + 0.02);
+      const ang = Math.atan2(qy - py, qx - px) + Math.PI / 2; const ux = Math.cos(ang), uy = Math.sin(ang), hw = w * 0.36, dy2 = h * 0.16;
+      ctx.strokeStyle = rgb(Yf.cDark, 0.32); ctx.beginPath(); ctx.moveTo(px - ux * hw, py - uy * hw - dy2); ctx.lineTo(px, py); ctx.lineTo(px + ux * hw, py + uy * hw - dy2); ctx.stroke();
+      ctx.strokeStyle = rgb(Yf.cLight, 0.5); ctx.beginPath(); ctx.moveTo(px - ux * hw * 0.8, py - uy * hw * 0.8 - dy2 - 1.2); ctx.lineTo(px, py - 1.2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   // ворсинки и блёстки (локальные, на нормальную геометрию)
   const extrasCache = new Map();
   function extras(s, h, seed, lurex, kind) {
@@ -156,7 +203,7 @@
     const p = o.progress == null ? 1 : o.progress;
     if (p <= 0.001) return g;
     const L = g.total * p;
-    const thick = (o.thick || 1) * (kind === 'p' && g.hole === undefined && !g.LT ? 0.9 : kind === 'y' && !g.LT ? 0.42 : 1);
+    const thick = (o.thick || 1) * (g.purl ? 0.9 : kind === 'y' && !g.LT ? 0.42 : 1);
     const wLeg = 0.44 * s * thick, wHead = 0.31 * s * thick;
     ctx.save();
     ctx.translate(x, y);
@@ -303,5 +350,5 @@
     ctx.drawImage(c, x - c._ox, y - c._oy, c._w, c._h);
   }
   function clearAtlas() { atlas.clear(); extrasCache.clear(); held.clear(); }
-  P.Stitch = { drawBobble, draw, geometry, extras, drawSprite, drawHeldSprite, clearAtlas };
+  P.Stitch = { drawBobble, draw, yarnStroke, drawCablePair, smoothPath, geometry, extras, drawSprite, drawHeldSprite, clearAtlas };
 })();

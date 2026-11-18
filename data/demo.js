@@ -117,35 +117,39 @@ window.PETELKA_DEMO = [
  {
   "id": 104,
   "item": "hat",
-  "name": "Косы",
+  "name": "Косы-жгуты",
   "theme": "pastel",
   "width": 8,
-  "height": 6,
+  "height": 8,
   "balls": [
    {
-    "color": "M",
-    "amount": 48
+    "color": "B",
+    "amount": 64
    }
   ],
   "rows": [
-   "M M M M M M M M",
-   "M M M M M M M M",
-   "M M M M M M M M",
-   "M M M M M M M M",
-   "M M M M M M M M",
-   "M M M M M M M M"
+   "B B B B B B B B",
+   "B B B B B B B B",
+   "B B B B B B B B",
+   "B B B B B B B B",
+   "B B B B B B B B",
+   "B B B B B B B B",
+   "B B B B B B B B",
+   "B B B B B B B B"
   ],
   "motif": null,
   "newMechanic": "демо фактур",
   "intendedTrap": "нет",
-  "targetTaps": 48,
+  "targetTaps": 64,
   "tex": [
-   "p \\ / p p \\ / p",
-   "p / \\ p p / \\ p",
-   "p / \\ p p / \\ p",
-   "p \\ / p p \\ / p",
-   "p / \\ p p / \\ p",
-   "p / \\ p p / \\ p"
+   "p c c p p c c p",
+   "p c c p p c c p",
+   "p c c p p c c p",
+   "p c c p p c c p",
+   "p c c p p c c p",
+   "p c c p p c c p",
+   "p c c p p c c p",
+   "p c c p p c c p"
   ]
  },
  {
