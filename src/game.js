@@ -347,6 +347,19 @@
     ctx.font = `${weight} ${size}px ${font === 'Marck' ? '"Marck Script", cursive' : 'Nunito, system-ui, sans-serif'}`;
     ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillStyle = color; ctx.fillText(t, x, y);
   }
+  // подпись в шкафу: в ширину ячейки — уменьшаем шрифт, при необходимости в две строки (длинные названия наезжали на соседей)
+  // кегль, при котором строка влезает в maxW (длинные названия вылезали за карточку)
+  function fitSize(t, size, weight, maxW, min = 10) { ctx.font = `${weight} ${size}px Nunito, system-ui, sans-serif`; const w = ctx.measureText(t).width; return w <= maxW ? size : Math.max(min, size * maxW / w); }
+  function wardLabel(t, x, y, maxW, color) {
+    const fnt = (sz) => { ctx.font = `700 ${sz}px Nunito, system-ui, sans-serif`; return ctx.measureText(t).width; };
+    if (fnt(10.5) <= maxW) { text(t, x, y + 9, 10.5, color); return; }
+    if (fnt(9.5) <= maxW) { text(t, x, y + 9, 9.5, color); return; }
+    const words = t.split(' '); let best = null;
+    for (let i = 1; i < words.length; i++) { const a = words.slice(0, i).join(' '), b = words.slice(i).join(' '); ctx.font = '700 9.5px Nunito, system-ui, sans-serif';
+      const m = Math.max(ctx.measureText(a).width, ctx.measureText(b).width); if (!best || m < best.m) best = { a, b, m }; }
+    if (best) { const sz = best.m <= maxW ? 9.5 : Math.max(7.5, 9.5 * maxW / best.m); text(best.a, x, y + 6, sz, color); text(best.b, x, y + 16, sz, color); }
+    else text(t, x, y + 9, Math.max(7.5, 9.5 * maxW / fnt(9.5)), color);
+  }
   function pill(x, y, w, h, fill, edge) {
     ctx.beginPath(); ctx.roundRect(x, y, w, h, h / 2);
     ctx.fillStyle = fill; ctx.fill(); if (edge) { ctx.strokeStyle = edge; ctx.lineWidth = 1; ctx.stroke(); }
@@ -370,7 +383,7 @@
     ctx.save(); ctx.shadowColor = 'rgba(255,255,255,0.9)'; ctx.shadowBlur = 10;
     text('Петелька', W / 2, st + 36, 36, '#9A5F73', 'Marck', 400);
     ctx.restore();
-    text(G.special ? `Для Н. · ${G.level.def.name}` : `${G.level.def.id}. ${G.level.def.name}`, W / 2, st + 70, 15, TH.textSoft, 'Nunito', 700);
+    { const t = G.special ? `Для Н. · ${G.level.def.name}` : `${G.level.def.id}. ${G.level.def.name}`; text(t, W / 2, st + 70, fitSize(t, 15, 700, W - 24, 11), TH.textSoft, 'Nunito', 700); }
     if (giftTagOn()) drawGiftTag(W - 84, st + 36, 1);
     // звук
     const sx = 32, sy = st + 36;
@@ -720,7 +733,7 @@
       G.particles.burst(G.W - 34, G.st + 36, 18, { col: [255, 236, 242], speed: 70, life: 0.9, r: 2, g: 30, star: true });
       save();
     }
-    if (t > 2.35 && !G.card && !G.note && !it.noted) { if (G.special) { it.noted = true; openNote(); } else openCard(it.snap); }
+    if (t > 2.35 && !G.card && !G.note && !G.ask && !it.noted) { it.noted = true; if (G.special) openNote(); else openCard(it.snap); }   // один раз: иначе карточка вставала заново под вопросом о подарке
   }
   function drawItem() {
     const it = G.vis.item; if (!it.snap) { return; }
@@ -800,7 +813,7 @@
           ctx.drawImage(c, sx + slot / 2 - c._w * sc / 2, sy + slot / 2 - c._h * sc / 2, c._w * sc, c._h * sc); ctx.restore();
         }
         const ncw = new Set(mine.map(x => x.cw)).size;
-        text(it.name, sx + slot / 2, sy + slot + 9, 10.5, last ? TH.text : 'rgba(160,110,128,0.55)', 'Nunito', 700);
+        wardLabel(it.name, sx + slot / 2, sy + slot, slot - 4, last ? TH.text : 'rgba(160,110,128,0.55)');
         // бусинки коллекции расцветок
         const n = it.cw.length, bw = 7; for (let q = 0; q < n; q++) { const bx = sx + slot / 2 + (q - (n - 1) / 2) * bw, by = sy + slot - 9; ctx.beginPath(); ctx.arc(bx, by, 2.3, 0, 6.283); ctx.fillStyle = q < ncw ? '#EE9BB2' : 'rgba(200,150,168,0.3)'; ctx.fill(); }
       });
@@ -820,14 +833,14 @@
     ctx.save(); ctx.globalAlpha = k; ctx.translate(0, (1 - k) * 30);
     panel(c.x, c.y, c.w, c.h, 26, true);
     text('Готово!', G.W / 2, c.y + 40, 34, '#A0607A', 'Marck', 400);
-    text(L.def.name, G.W / 2, c.y + 74, 17, TH.text, 'Nunito', 800);
+    text(L.def.name, G.W / 2, c.y + 74, fitSize(L.def.name, 17, 800, c.w - 28, 11), TH.text, 'Nunito', 800);
     const sn = c.snap; const maxW = c.w - 90, maxH = 180; const sc = Math.min(maxW / sn._w, maxH / sn._h);
     const iw = sn._w * sc, ih = sn._h * sc;
     ctx.save(); ctx.shadowColor = 'rgba(120,60,80,0.22)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 6;
     ctx.drawImage(sn, G.W / 2 - iw / 2, c.y + 96 + (maxH - ih) / 2, iw, ih); ctx.restore();
-    text(`${G.stats.taps - G.stats.wrong} петель` + (L.def.cwName ? ` · расцветка «${L.def.cwName}»` : ''), G.W / 2, c.y + 290, 14, TH.textSoft, 'Nunito', 700);
+    { const t1 = `${G.stats.taps - G.stats.wrong} петель` + (L.def.cwName ? ` · расцветка «${L.def.cwName}»` : ''); text(t1, G.W / 2, c.y + 290, fitSize(t1, 14, 700, c.w - 24), TH.textSoft, 'Nunito', 700); }
     if (L.def.shelf) { const ci = catItem(L.def.item); const got = new Set(G.items.filter(x => x.item === L.def.item).map(x => x.cw)).size;
-      text(`на полке «${shelfName(L.def.shelf)}» · ${got} из ${ci ? ci.cw.length : 1} расцветок`, G.W / 2, c.y + 312, 13, TH.textSoft, 'Nunito', 700); }
+      { const t2 = `на полке «${shelfName(L.def.shelf)}» · ${got} из ${ci ? ci.cw.length : 1} расцветок`; text(t2, G.W / 2, c.y + 312, fitSize(t2, 13, 700, c.w - 24), TH.textSoft, 'Nunito', 700); } }
     const b = c.btn;
     ctx.save(); ctx.shadowColor = 'rgba(220,120,150,0.35)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 4;
     const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h); g.addColorStop(0, '#F7B9CA'); g.addColorStop(1, '#EC97AE');
@@ -843,7 +856,8 @@
     let nxt = G.levelIdx + 1;
     if (G.special) nxt = G.levelIdx;
     if (LEVELS.length < 60) nxt = (G.card && G.card.last) ? 0 : nxt;
-    else if ((G.card && G.card.last) || G.endless) { G.endless = true; const cur = G.level.def.item; let k = 0; do { nxt = 40 + Math.floor(Math.random() * (LEVELS.length - 40)); k++; } while (k < 20 && LEVELS[nxt].item === cur); }
+    else if ((G.card && G.card.last) || G.endless || nxt >= LEVELS.length) { G.endless = true; const cur = G.level.def.item; let k = 0; do { nxt = 40 + Math.floor(Math.random() * (LEVELS.length - 40)); k++; } while (k < 20 && LEVELS[nxt].item === cur); }
+    nxt = clamp(nxt, 0, LEVELS.length - 1);
     G.fadeT = 0; G.fadeSwapped = false; G.fadeSwap = () => { G.card = null; startLevel(nxt); };
   }
 
