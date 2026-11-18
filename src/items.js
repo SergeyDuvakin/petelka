@@ -137,7 +137,7 @@
   const DECO = {
     fringe: { post(c2, g) { const Yc = g.Ycast, s = g.s; for (let i = 0; i < g.W * 2; i++) { const c = i >> 1; if (g.none(0, c)) continue; const x = g.padX + (i + 0.5) * s / 2, y = g.castEdge + s * 0.05, L = s * (0.95 + ((i * 37) % 7) / 30);
       const sw = ((i * 53) % 5 - 2) * s * 0.03; ST.yarnStroke(c2, [[x, y], [x + sw * 0.5, y + L * 0.5], [x + sw, y + L]], s * 0.15, Yc, { shadow: i % 2 === 0 }); ST.yarnStroke(c2, [[x + s * 0.06, y], [x + s * 0.06 - sw * 0.4, y + L * 0.55], [x + s * 0.05 - sw, y + L * 0.95]], s * 0.13, Yc, { shadow: false, dim: 0.14 }); } } },
-    tassels4: { post(c2, g) { const s = g.s; tassel(c2, g.padX + s * 0.3, g.castEdge - s * 0.05, s * 1.2, g.Yacc, s, 3, 0.25); tassel(c2, g.padX + g.W * s - s * 0.3, g.castEdge - s * 0.05, s * 1.2, g.Yacc, s, 4, -0.25); } },
+    tassels4: { post(c2, g) { const s = g.s, yt = g.yOf(g.H - 1) + g.h * 0.35, yb = g.yOf(0) + g.h * 0.25, xl = g.colX(0) + s * 0.25, xr = g.colX(g.W - 1) - s * 0.25; tassel(c2, xl, yb, s * 1.35, g.Yacc, s * 1.15, 3, 0.7); tassel(c2, xr, yb, s * 1.35, g.Yacc, s * 1.15, 4, -0.7); tassel(c2, xl, yt, s * 1.35, g.Yacc, s * 1.15, 5, 2.45); tassel(c2, xr, yt, s * 1.35, g.Yacc, s * 1.15, 6, -2.45); } },
     tube: { fab: true, post(c2, g) { volume(c2, g, g.padX, g.yTop, g.padX + g.W * g.s, g.castEdge, 1.2, false); } },
     puffy: { fab: true, post(c2, g) { volume(c2, g, g.padX, g.yTop, g.padX + g.W * g.s, g.castEdge, 1, true); } },
     heeltoe: { fab: true, post(c2, g) { const s = g.s, y = g.yOf(1); volume(c2, g, g.padX + g.W * s - 2.8 * s, y - 1.6 * g.h, g.padX + g.W * s + 0.6 * s, g.castEdge + s * 0.3, 1.1, true); volume(c2, g, g.padX - 0.8 * s, y - 1.4 * g.h, g.padX + 2.4 * s, g.castEdge + s * 0.3, 1.1, true); } },
@@ -149,6 +149,30 @@
     fringe_top: { post(c2, g) { const Yc = g.Ycast, s = g.s; for (let i = 0; i < g.W * 2; i++) { const c = i >> 1; if (g.topRow(c) !== g.H - 1) continue; const x = g.padX + (i + 0.5) * s / 2, y = g.topY(c) + s * 0.2, L = s * (0.95 + ((i * 41) % 7) / 30);
       const sw = ((i * 29) % 5 - 2) * s * 0.03; ST.yarnStroke(c2, [[x, y], [x + sw * 0.5, y - L * 0.5], [x + sw, y - L]], s * 0.15, Yc, { shadow: false }); ST.yarnStroke(c2, [[x + s * 0.06, y], [x + s * 0.06 - sw * 0.4, y - L * 0.55], [x + s * 0.05 - sw, y - L * 0.95]], s * 0.13, Yc, { shadow: false, dim: 0.14 }); } } },
     tassel_corners: { post(c2, g) { const s = g.s, y = g.topY(0) + s * 0.35; tassel(c2, g.colX(0) - s * 0.1, y, s * 1.3, g.Yacc, s, 11, 0.35); tassel(c2, g.colX(g.W - 1) + s * 0.1, y, s * 1.3, g.Yacc, s, 12, -0.35); } },
+    bag_flap: { post(c2, g) { const s = g.s, x0 = g.padX + s * 0.05, x1 = g.padX + g.W * s - s * 0.05, y0 = g.yTop + s * 0.15, yt = g.yOf(g.H - 3) + g.h * 0.25, cx = (x0 + x1) / 2, Y2 = g.Yacc;
+      c2.save(); c2.fillStyle = 'rgba(110,45,70,0.22)'; c2.beginPath(); c2.moveTo(x0, y0 + s * 0.2); c2.lineTo(x1, y0 + s * 0.2); c2.quadraticCurveTo(x1, yt + s * 0.25, cx, yt + s * 0.45); c2.quadraticCurveTo(x0, yt + s * 0.25, x0, y0 + s * 0.2); c2.fill();
+      const gr = c2.createLinearGradient(0, y0, 0, yt); gr.addColorStop(0, rgb(Y2.cLight)); gr.addColorStop(1, rgb(Y2.cBase));
+      c2.fillStyle = gr; c2.beginPath(); c2.moveTo(x0, y0); c2.lineTo(x1, y0); c2.quadraticCurveTo(x1, yt, cx, yt + s * 0.2); c2.quadraticCurveTo(x0, yt, x0, y0); c2.closePath(); c2.fill();
+      c2.save(); c2.clip(); c2.strokeStyle = rgb(Y2.cDark, 0.3); c2.lineWidth = Math.max(0.8, s * 0.05); c2.lineCap = 'round';
+      for (let yy = y0 + g.h * 0.6; yy < yt + s * 0.2; yy += g.h) for (let xx = x0 + s * 0.5; xx < x1; xx += s) { c2.beginPath(); c2.moveTo(xx - s * 0.28, yy - g.h * 0.3); c2.lineTo(xx, yy); c2.lineTo(xx + s * 0.28, yy - g.h * 0.3); c2.stroke(); }
+      c2.restore(); c2.restore();
+      ST.yarnStroke(c2, [[x0, y0], [x0 + (cx - x0) * 0.25, yt - (yt - y0) * 0.05], [cx, yt + s * 0.2], [x1 - (x1 - cx) * 0.25, yt - (yt - y0) * 0.05], [x1, y0]], s * 0.26, Y2, {});
+      button(c2, cx, yt - s * 0.05, s * 0.34, [244, 236, 226], g.Ymain); } },
+    phone_in: { pre(c2, g) { const s = g.s, x0 = g.padX + s * 0.3, x1 = g.padX + g.W * s - s * 0.3, y0 = g.yTop - s * 1.45, y1 = g.yTop + s * 2.5, r = s * 0.6;
+      c2.save(); const gr = c2.createLinearGradient(x0, 0, x1, 0); gr.addColorStop(0, '#5E5866'); gr.addColorStop(0.5, '#8A8494'); gr.addColorStop(1, '#55505C');
+      c2.fillStyle = gr; c2.beginPath(); c2.roundRect(x0, y0, x1 - x0, y1 - y0, r); c2.fill();
+      c2.fillStyle = '#2E2A34'; c2.beginPath(); c2.roundRect(x0 + s * 0.14, y0 + s * 0.14, x1 - x0 - s * 0.28, y1 - y0, r * 0.75); c2.fill();
+      const gl = c2.createLinearGradient(x0, y0, x1, y0 + s); gl.addColorStop(0, 'rgba(255,255,255,0.22)'); gl.addColorStop(0.5, 'rgba(255,255,255,0)'); c2.fillStyle = gl; c2.beginPath(); c2.roundRect(x0 + s * 0.14, y0 + s * 0.14, x1 - x0 - s * 0.28, y1 - y0, r * 0.75); c2.fill();
+      c2.fillStyle = '#111014'; c2.beginPath(); c2.roundRect((x0 + x1) / 2 - s * 0.45, y0 + s * 0.3, s * 0.9, s * 0.22, s * 0.11); c2.fill(); c2.restore(); } },
+    book: { post(c2, g) { const s = g.s, x0 = g.padX - s * 1.15, x1 = g.padX + g.W * s + s * 1.15, y0 = g.yTop - s * 0.9, y1 = g.yOf(g.H - 3) + g.h * 0.1;
+      c2.save(); c2.fillStyle = 'rgba(110,45,70,0.22)'; c2.beginPath(); c2.roundRect(x0 + s * 0.08, y0 + s * 0.15, x1 - x0, y1 - y0, s * 0.18); c2.fill();
+      const cv = c2.createLinearGradient(0, y0, 0, y1); cv.addColorStop(0, '#E8B7C3'); cv.addColorStop(1, '#C98DA0'); c2.fillStyle = cv; c2.beginPath(); c2.roundRect(x0, y0, x1 - x0, y1 - y0, s * 0.18); c2.fill();
+      // обрез страниц снизу
+      c2.fillStyle = '#FFF8EE'; c2.beginPath(); c2.roundRect(x0 + s * 0.12, y1 - s * 0.42, x1 - x0 - s * 0.24, s * 0.3, s * 0.06); c2.fill();
+      c2.strokeStyle = 'rgba(190,150,150,0.55)'; c2.lineWidth = 0.8; for (let k = 1; k < 4; k++) { const yy = y1 - s * 0.42 + k * s * 0.075; c2.beginPath(); c2.moveTo(x0 + s * 0.16, yy); c2.lineTo(x1 - s * 0.16, yy); c2.stroke(); }
+      // тиснение на обложке
+      c2.strokeStyle = 'rgba(255,240,226,0.75)'; c2.lineWidth = Math.max(1, s * 0.06); c2.beginPath(); c2.roundRect(x0 + s * 0.35, y0 + s * 0.3, x1 - x0 - s * 0.7, y1 - y0 - s * 1.0, s * 0.12); c2.stroke();
+      c2.restore(); } },
     buttons_band: { post(c2, g) { for (const [r, c] of (g.def.buttons || [])) button(c2, g.colX(c), g.yOf(r) + g.h * 0.12, g.s * 0.31, [244, 236, 226], g.Yacc); } },
     inner: { pre(c2, g) { // изнанка/спинка в вырезе, разрезе кардигана и в кольце снуда
       const { W, H, s, h } = g, m = (r, c) => r >= 0 && r < H && c >= 0 && c < W && !g.none(r, c);
@@ -188,13 +212,18 @@
       c2.strokeStyle = 'rgba(110,45,70,0.35)'; c2.lineWidth = Math.max(1, s * 0.07); c2.lineCap = 'round';
       for (const d of [-1, 1]) for (let k = -2; k <= 2; k++) { c2.beginPath(); c2.moveTo(x + d * s * 0.7, ym + k * Hh * 0.12); c2.quadraticCurveTo(x + d * s * 1.4, ym + k * Hh * 0.2, x + d * s * 2.1, ym + k * Hh * 0.3); c2.stroke(); }
       c2.restore();
-      const kw = s * 0.9, kh = Hh * 0.82;
-      c2.save(); c2.fillStyle = 'rgba(110,45,70,0.28)'; c2.beginPath(); c2.ellipse(x + s * 0.08, ym + s * 0.12, kw * 1.05, kh * 0.62, 0, 0, 6.283); c2.fill();
-      const gr = c2.createLinearGradient(x - kw, 0, x + kw, 0); gr.addColorStop(0, rgb(Yc.cDark)); gr.addColorStop(0.35, rgb(Yc.cLight)); gr.addColorStop(0.62, rgb(Yc.cBase)); gr.addColorStop(1, rgb(Yc.cDark));
-      c2.fillStyle = gr; c2.beginPath(); c2.ellipse(x, ym, kw, kh * 0.6, 0, 0, 6.283); c2.fill(); c2.restore();
-      const w = s * 0.42;
-      ST.yarnStroke(c2, [[x - kw * 0.85, ym - kh * 0.42], [x - kw * 0.1, ym - kh * 0.05], [x + kw * 0.85, ym + kh * 0.42]], w, Yc, { shadow: true });
-      ST.yarnStroke(c2, [[x - kw * 0.85, ym + kh * 0.42], [x + kw * 0.1, ym + kh * 0.05], [x + kw * 0.85, ym - kh * 0.42]], w, Yc, { shadow: true, dim: 0.06 }); } },
+      // две полосы полотна, перекрещённые «восьмёркой»: задняя чуть темнее, передняя — с тенью и рядами петель
+      const bw = Math.min(s * 1.25, Hh * 0.46), dxk = s * 0.95, dyk = Hh * 0.42;
+      const band = (x0, y0, x1, y1, dim, sh) => { const pts = [[x0, y0], [x + (x0 + x1 - 2 * x) * 0.15, ym], [x1, y1]];
+        if (sh) { c2.save(); c2.translate(s * 0.08, s * 0.12); c2.beginPath(); ST.smoothPath(c2, pts); c2.strokeStyle = 'rgba(110,45,70,0.3)'; c2.lineWidth = bw * 1.05; c2.lineCap = 'round'; c2.stroke(); c2.restore(); }
+        ST.yarnStroke(c2, pts, bw, Yc, { shadow: false, dim });
+        // ряды петель поперёк полосы
+        c2.save(); c2.strokeStyle = rgb(Yc.cDark, 0.28); c2.lineWidth = Math.max(0.8, s * 0.05); c2.lineCap = 'round';
+        const L = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / L, uy = (y1 - y0) / L, nx = -uy, ny = ux;
+        for (let k = 1; k < 5; k++) { const t = k / 5, px = x0 + (x1 - x0) * t, py = y0 + (y1 - y0) * t; for (const sgn of [-1, 1]) { c2.beginPath(); c2.moveTo(px + nx * sgn * bw * 0.36 - ux * s * 0.1, py + ny * sgn * bw * 0.36 - uy * s * 0.1); c2.lineTo(px + ux * s * 0.08, py + uy * s * 0.08); c2.stroke(); } }
+        c2.restore(); };
+      band(x + dxk, ym - dyk, x - dxk, ym + dyk, 0.16, false);
+      band(x - dxk, ym - dyk, x + dxk, ym + dyk, 0, true); } },
     buttons_center: { post(c2, g) { const x = g.padX + g.W * g.s / 2; for (let r = 0; r < g.H - 2; r += 2) button(c2, x, g.yOf(r) + g.h * 0.15, g.s * 0.27, [238, 226, 214], g.Yacc); } },
     buttons_top: { post(c2, g) { const r = g.H - 2; for (const k of [-1, 0, 1]) button(c2, g.cx + k * g.s * 2, g.yOf(r) + g.h * 0.2, g.s * 0.3, [240, 228, 218], g.Yacc); } },
     mug: { pre(c2, g) { const s = g.s, x0 = g.padX - s * 0.22, x1 = g.padX + g.W * s + s * 0.22, yT = g.yTop - s * 0.75, yB = g.castEdge + s * 0.55, cer = [250, 244, 240], cerD = [214, 196, 196];
