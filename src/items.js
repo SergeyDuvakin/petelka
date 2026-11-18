@@ -134,6 +134,100 @@
   }
   const GOLD = { cBase: [226, 186, 112], cLight: [255, 238, 190], cDark: [168, 124, 60] };
 
+  // сплайн Катмулла-Рома через точки
+  function sampleCR(pts, n) {
+    const out = [], Q = [pts[0], ...pts, pts[pts.length - 1]];
+    for (let i = 1; i < Q.length - 2; i++) { const p0 = Q[i - 1], p1 = Q[i], p2 = Q[i + 1], p3 = Q[i + 2];
+      for (let k = 0; k < n; k++) { const t = k / n, t2 = t * t, t3 = t2 * t, f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+        out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]); } }
+    out.push(pts[pts.length - 1]); return out;
+  }
+  // вязаная лента с объёмом: светотень цилиндра поперёк, ряды «ёлочкой» вдоль, кромки и падающая тень
+  function ribbon(c2, pts, wf, Yc, s, o = {}) {
+    const q = sampleCR(pts, 16), N = q.length, t0 = o.from || 0, t1 = o.to == null ? 1 : o.to;
+    const nrm = q.map((p, i) => { const a = q[Math.max(0, i - 1)], b = q[Math.min(N - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; return [-dy / L, dx / L]; });
+    const W = q.map((p, i) => wf(i / (N - 1)));
+    const i0 = Math.round(t0 * (N - 1)), i1 = Math.round(t1 * (N - 1));
+    const at = (i, u) => [q[i][0] + nrm[i][0] * W[i] * u, q[i][1] + nrm[i][1] * W[i] * u];
+    const poly = () => { c2.beginPath(); for (let i = i0; i <= i1; i++) { const p = at(i, -0.5); i === i0 ? c2.moveTo(p[0], p[1]) : c2.lineTo(p[0], p[1]); } for (let i = i1; i >= i0; i--) { const p = at(i, 0.5); c2.lineTo(p[0], p[1]); } c2.closePath(); };
+    c2.save();
+    if (o.shadow !== false) { c2.save(); c2.translate(s * 0.1, s * 0.18); poly(); c2.fillStyle = 'rgba(110,45,70,0.3)'; c2.filter = 'blur(' + Math.max(1, s * 0.08) + 'px)'; c2.fill(); c2.restore(); }
+    poly(); c2.fillStyle = rgb(Yc.cBase); c2.fill();
+    c2.save(); poly(); c2.clip(); c2.lineCap = 'round';
+    const K = 8;
+    for (let i = i0; i < i1; i++) for (let k = 0; k < K; k++) {
+      const u = -0.5 + (k + 0.5) / K, up = -(nrm[i][0] * -0.45 + nrm[i][1] * -0.89) * Math.sign(u || 1) * Math.abs(u) * 2;   // сторона к свету — светлее
+      let lit = Math.cos(u * Math.PI * 0.92) * 0.75 + up * 0.28 + (o.dim ? -o.dim : 0);
+      if (o.shadeEnd) { const tt = i / (N - 1); lit -= Math.max(0, (tt - (1 - o.shadeEnd)) / o.shadeEnd) * 0.55; }
+      if (o.shadeStart) { const tt = i / (N - 1); lit -= Math.max(0, (o.shadeStart - tt) / o.shadeStart) * 0.45; }
+      const col = lit > 0.62 ? mix(Yc.cBase, Yc.cLight, Math.min(1, (lit - 0.62) / 0.38)) : mix(Yc.cDark, Yc.cBase, clamp(lit / 0.62, 0, 1));
+      const a = at(i, u), b = at(i + 1, u); c2.strokeStyle = rgb(col); c2.lineWidth = W[i] / K * 1.6;
+      c2.beginPath(); c2.moveTo(a[0], a[1]); c2.lineTo(b[0], b[1]); c2.stroke();
+    }
+    // петли: «ёлочка» вдоль ленты
+    let acc = 0; const step = s * 0.42;
+    for (let i = i0 + 1; i <= i1; i++) { acc += Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]); if (acc < step) continue; acc = 0;
+      const j = Math.min(i1, i + 2), c0 = at(j, 0);
+      for (const u of [-0.44, 0.44]) { const e = at(i, u), m = at(i, u * 0.12);
+        c2.strokeStyle = rgb(Yc.cDark, 0.7); c2.lineWidth = Math.max(1.2, s * 0.09); c2.beginPath(); c2.moveTo(e[0], e[1]); c2.quadraticCurveTo(m[0], m[1], c0[0], c0[1]); c2.stroke();
+        c2.strokeStyle = rgb(Yc.cLight, 0.35); c2.lineWidth = Math.max(0.6, s * 0.035); c2.beginPath(); c2.moveTo(e[0] - nrm[i][0] * s * 0.05, e[1] - s * 0.05); c2.quadraticCurveTo(m[0], m[1] - s * 0.05, c0[0], c0[1] - s * 0.05); c2.stroke(); } }
+    c2.restore();
+    c2.strokeStyle = rgb(Yc.cDark, 0.55); c2.lineWidth = Math.max(0.8, s * 0.05);
+    for (const u of [-0.5, 0.5]) { c2.beginPath(); for (let i = i0; i <= i1; i++) { const p = at(i, u); i === i0 ? c2.moveTo(p[0], p[1]) : c2.lineTo(p[0], p[1]); } c2.stroke(); }
+    c2.restore();
+  }
+
+  // вязаная лента из настоящих петель: петли ставятся рядами вдоль кривой и поворачиваются по касательной; поверх — светотень цилиндра
+  function ribbonKnit(c2, pts, wf, code, s, dpr, o = {}) {
+    const q = sampleCR(pts, 18), N = q.length, to = o.to == null ? 1 : o.to;
+    const tan = q.map((p, i) => { const a = q[Math.max(0, i - 1)], b = q[Math.min(N - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; return [dx / L, dy / L]; });
+    const W = q.map((p, i) => wf(i / (N - 1))), i1 = Math.round(to * (N - 1)), i0 = Math.round((o.from || 0) * (N - 1));
+    const at = (i, u) => [q[i][0] - tan[i][1] * W[i] * u, q[i][1] + tan[i][0] * W[i] * u];
+    const poly = (cx) => { cx.beginPath(); for (let i = i0; i <= i1; i++) { const p = at(i, -0.5); i > i0 ? cx.lineTo(p[0], p[1]) : cx.moveTo(p[0], p[1]); } for (let i = i1; i >= i0; i--) { const p = at(i, 0.5); cx.lineTo(p[0], p[1]); } cx.closePath(); };
+    const cw = c2.canvas.width, chh = c2.canvas.height, t = document.createElement('canvas'); t.width = cw; t.height = chh; const x = t.getContext('2d'); x.scale(dpr, dpr);
+    const Y = P.yarn(code), n = o.cols || 3, ss = Math.max(4, Math.round((W[Math.floor(N / 2)] / n) * 1.12 * 2) / 2), hs = ss * 0.78;
+    poly(x); x.fillStyle = rgb(Y.cBase); x.fill();
+    // петли
+    let acc = hs * 0.5, row = 0;
+    for (let i = 1; i <= i1; i++) { acc += Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]); if (acc < hs * 0.92) continue; acc = 0; row++;
+      const [tx, ty] = tan[i], th = Math.atan2(-tx, ty) + (o.flip ? Math.PI : 0), m = Math.max(2, Math.round(W[i] / ss));
+      for (let k = 0; k < m; k++) { const u = -0.5 + (k + 0.5) / m, p = at(i, u); x.save(); x.translate(p[0], p[1]); x.rotate(th); ST.drawSprite(x, 0, 0, ss, hs, code, 1 + (row * 3 + k) % 4, dpr); x.restore(); } }
+    // обрезка по ленте и светотень цилиндра
+    x.globalCompositeOperation = 'destination-in'; poly(x); x.fillStyle = '#000'; x.fill();
+    x.globalCompositeOperation = 'source-atop'; x.lineCap = 'round';
+    x.lineCap = 'butt'; x.lineJoin = 'round';
+    for (let k = 0; k < 7; k++) { const u = -0.5 + (k + 0.5) / 7, lit = Math.cos(u * Math.PI) - (o.dim || 0) - (u > 0 ? u * 0.25 : 0);   // цилиндр: светлая середина, нижняя кромка в тени
+      x.strokeStyle = lit > 0.75 ? `rgba(255,250,248,${(lit - 0.75) * 0.9})` : `rgba(110,45,70,${Math.min(0.32, (0.75 - lit) * 0.42)})`; x.lineWidth = W[Math.floor((i0 + i1) / 2)] / 7 + 0.6;
+      x.beginPath(); for (let i = i0; i <= i1; i++) { const p = at(i, u); i > i0 ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1]); } x.stroke(); }
+    if (o.shadeEnd) { const j0 = Math.max(i0, Math.round((1 - o.shadeEnd) * (N - 1))); if (j0 < i1) { const p0 = q[j0], p1 = q[i1], gr = x.createLinearGradient(p0[0], p0[1], p1[0], p1[1]); gr.addColorStop(0, 'rgba(110,45,70,0)'); gr.addColorStop(1, 'rgba(110,45,70,0.4)');
+      x.strokeStyle = gr; x.lineWidth = Math.max(...W) * 1.1; x.beginPath(); for (let i = j0; i <= i1; i++) i > j0 ? x.lineTo(q[i][0], q[i][1]) : x.moveTo(q[i][0], q[i][1]); x.stroke(); } }
+    x.globalCompositeOperation = 'source-over'; x.strokeStyle = rgb(Y.cDark, 0.38); x.lineWidth = Math.max(0.8, s * 0.045);
+    for (const u of [-0.5, 0.5]) { x.beginPath(); for (let i = i0; i <= i1; i++) { const p = at(i, u); i > i0 ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1]); } x.stroke(); }
+    if (o.shadow !== false) { c2.save(); c2.translate(s * 0.12, s * 0.2); poly(c2); c2.fillStyle = 'rgba(110,45,70,0.3)'; c2.filter = 'blur(' + Math.max(1, s * 0.1) + 'px)'; c2.fill(); c2.restore(); }
+    c2.save(); c2.setTransform(1, 0, 0, 1, 0, 0); c2.drawImage(t, 0, 0); c2.restore();
+  }
+  const GREEN = { cBase: [126, 168, 120], cLight: [176, 208, 160], cDark: [84, 122, 86] }, BROWN = { cBase: [150, 108, 84], cLight: [192, 152, 122], cDark: [104, 72, 56] };
+  function topCenter(g) { let best = -1, cs = []; for (let c = 0; c < g.W; c++) { const r = g.topRow(c); if (r > best) { best = r; cs = [c]; } else if (r === best) cs.push(c); }
+    return [cs.reduce((a, c) => a + g.colX(c), 0) / cs.length, g.yOf(best) - 0.45 * g.h]; }
+  function holes(g) { const { W, H } = g, m = (r, c) => r >= 0 && r < H && c >= 0 && c < W && !g.none(r, c), out = [];
+    for (let c = 0; c < W; c++) for (let r = 0; r < H; r++) { if (m(r, c)) continue; let L = false, R = false; for (let k = c - 1; k >= 0; k--) if (m(r, k)) { L = true; break; } for (let k = c + 1; k < W; k++) if (m(r, k)) { R = true; break; }
+      let U = false, D = false; for (let k = r + 1; k < H; k++) if (m(k, c)) { U = true; break; } for (let k = r - 1; k >= 0; k--) if (m(k, c)) { D = true; break; } if (L && R && U && D) out.push([r, c]); }
+    return out; }
+  function star4(c2, x, y, R, col) { c2.save(); c2.beginPath(); for (let i = 0; i < 8; i++) { const a = -Math.PI / 2 + i * Math.PI / 4, rr = i % 2 ? R * 0.32 : R; c2.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } c2.closePath();
+    const gr = c2.createRadialGradient(x, y, 0, x, y, R); gr.addColorStop(0, rgb(col.cLight)); gr.addColorStop(1, rgb(col.cBase)); c2.fillStyle = gr; c2.fill(); c2.strokeStyle = rgb(col.cDark, 0.7); c2.lineWidth = 1; c2.stroke(); c2.restore(); }
+  function cherryBall(c2, x, y, r) { const C = { cBase: [206, 70, 92], cLight: [246, 150, 160], cDark: [140, 36, 58] };
+    c2.save(); c2.fillStyle = 'rgba(110,45,70,0.25)'; c2.beginPath(); c2.ellipse(x + r * 0.15, y + r * 0.3, r, r * 0.8, 0, 0, 6.283); c2.fill();
+    const gr = c2.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r); gr.addColorStop(0, rgb(C.cLight)); gr.addColorStop(0.5, rgb(C.cBase)); gr.addColorStop(1, rgb(C.cDark));
+    c2.fillStyle = gr; c2.beginPath(); c2.arc(x, y, r, 0, 6.283); c2.fill(); c2.fillStyle = 'rgba(255,255,255,0.75)'; c2.beginPath(); c2.ellipse(x - r * 0.35, y - r * 0.38, r * 0.22, r * 0.14, -0.6, 0, 6.283); c2.fill(); c2.restore(); }
+  function leafShape(c2, x, y, L, ang, Yc) { c2.save(); c2.translate(x, y); c2.rotate(ang);
+    c2.beginPath(); c2.moveTo(0, 0); c2.quadraticCurveTo(L * 0.5, -L * 0.42, L, 0); c2.quadraticCurveTo(L * 0.5, L * 0.42, 0, 0); c2.closePath();
+    const gr = c2.createLinearGradient(0, -L * 0.3, 0, L * 0.3); gr.addColorStop(0, rgb(Yc.cLight)); gr.addColorStop(1, rgb(Yc.cDark)); c2.fillStyle = gr; c2.fill();
+    c2.strokeStyle = rgb(Yc.cDark, 0.8); c2.lineWidth = 1; c2.stroke(); c2.beginPath(); c2.moveTo(L * 0.08, 0); c2.lineTo(L * 0.85, 0); c2.strokeStyle = rgb(Yc.cLight, 0.9); c2.stroke(); c2.restore(); }
+  function smallFace(c2, g, x, y) { const s = g.s;
+    knotDot(c2, x - s * 0.85, y, s * 0.16, DARK); knotDot(c2, x + s * 0.85, y, s * 0.16, DARK);
+    ST.yarnStroke(c2, [[x - s * 0.32, y + s * 0.38], [x, y + s * 0.62], [x + s * 0.32, y + s * 0.38]], Math.max(1, s * 0.08), MOUTH, { shadow: false });
+    blush(c2, x - s * 1.45, y + s * 0.42, s * 0.4); blush(c2, x + s * 1.45, y + s * 0.42, s * 0.4); }
+
   const DECO = {
     fringe: { post(c2, g) { const Yc = g.Ycast, s = g.s; for (let i = 0; i < g.W * 2; i++) { const c = i >> 1; if (g.none(0, c)) continue; const x = g.padX + (i + 0.5) * s / 2, y = g.castEdge + s * 0.05, L = s * (0.95 + ((i * 37) % 7) / 30);
       const sw = ((i * 53) % 5 - 2) * s * 0.03; ST.yarnStroke(c2, [[x, y], [x + sw * 0.5, y + L * 0.5], [x + sw, y + L]], s * 0.15, Yc, { shadow: i % 2 === 0 }); ST.yarnStroke(c2, [[x + s * 0.06, y], [x + s * 0.06 - sw * 0.4, y + L * 0.55], [x + s * 0.05 - sw, y + L * 0.95]], s * 0.13, Yc, { shadow: false, dim: 0.14 }); } } },
@@ -204,26 +298,22 @@
 
     pompom_small: { post(c2, g) { const c = Math.min(g.W - 2, Math.round(g.W * 0.66)); pompom(c2, g.colX(c), g.topY(c) + g.s * 0.15, g.s * 0.55, g.Yacc, 5); } },
     stalk: { post(c2, g) { const x = g.cx, y = g.yTop + g.s * 0.2, s = g.s; ST.yarnStroke(c2, [[x, y], [x + s * 0.05, y - s * 0.35], [x + s * 0.25, y - s * 0.62], [x + s * 0.42, y - s * 0.7]], s * 0.3, g.Ymain, {}); } },
-    twist: { fab: true, post(c2, g) { // перекрут по центру: ткань стянута, узел — объёмная обмотка с перекрещенными складками
+    twist: { fab: true, post(c2, g) { // узел-перекрут: две половины повязки огибают друг друга — объёмные вязаные ленты
       const s = g.s, x = g.cx, y0 = g.yTop + g.h * 0.1, y1 = g.castEdge - g.h * 0.05, ym = (y0 + y1) / 2, Hh = y1 - y0, Yc = g.Ymain;
-      c2.save(); c2.globalCompositeOperation = 'source-atop';
-      const gp = c2.createLinearGradient(x - s * 2.6, 0, x + s * 2.6, 0); gp.addColorStop(0, 'rgba(120,50,80,0)'); gp.addColorStop(0.36, 'rgba(120,50,80,0.28)'); gp.addColorStop(0.5, 'rgba(120,50,80,0.4)'); gp.addColorStop(0.64, 'rgba(120,50,80,0.28)'); gp.addColorStop(1, 'rgba(120,50,80,0)');
-      c2.fillStyle = gp; c2.fillRect(x - s * 2.6, y0 - s, s * 5.2, Hh + 2 * s);
-      c2.strokeStyle = 'rgba(110,45,70,0.35)'; c2.lineWidth = Math.max(1, s * 0.07); c2.lineCap = 'round';
-      for (const d of [-1, 1]) for (let k = -2; k <= 2; k++) { c2.beginPath(); c2.moveTo(x + d * s * 0.7, ym + k * Hh * 0.12); c2.quadraticCurveTo(x + d * s * 1.4, ym + k * Hh * 0.2, x + d * s * 2.1, ym + k * Hh * 0.3); c2.stroke(); }
+      c2.save(); c2.globalCompositeOperation = 'source-atop';      // полотно стянуто к узлу: складки и тень
+      const gp = c2.createLinearGradient(x - s * 3.2, 0, x + s * 3.2, 0); gp.addColorStop(0, 'rgba(120,50,80,0)'); gp.addColorStop(0.3, 'rgba(120,50,80,0.22)'); gp.addColorStop(0.5, 'rgba(120,50,80,0.42)'); gp.addColorStop(0.7, 'rgba(120,50,80,0.22)'); gp.addColorStop(1, 'rgba(120,50,80,0)');
+      c2.fillStyle = gp; c2.fillRect(x - s * 3.2, y0 - s, s * 6.4, Hh + 2 * s);
+      c2.strokeStyle = 'rgba(110,45,70,0.3)'; c2.lineWidth = Math.max(1, s * 0.07); c2.lineCap = 'round';
+      for (const d of [-1, 1]) for (let k = -2; k <= 2; k++) { c2.beginPath(); c2.moveTo(x + d * s * 1.4, ym + k * Hh * 0.1); c2.quadraticCurveTo(x + d * s * 2.2, ym + k * Hh * 0.17, x + d * s * 3.0, ym + k * Hh * 0.24); c2.stroke(); }
       c2.restore();
-      // две полосы полотна, перекрещённые «восьмёркой»: задняя чуть темнее, передняя — с тенью и рядами петель
-      const bw = Math.min(s * 1.25, Hh * 0.46), dxk = s * 0.95, dyk = Hh * 0.42;
-      const band = (x0, y0, x1, y1, dim, sh) => { const pts = [[x0, y0], [x + (x0 + x1 - 2 * x) * 0.15, ym], [x1, y1]];
-        if (sh) { c2.save(); c2.translate(s * 0.08, s * 0.12); c2.beginPath(); ST.smoothPath(c2, pts); c2.strokeStyle = 'rgba(110,45,70,0.3)'; c2.lineWidth = bw * 1.05; c2.lineCap = 'round'; c2.stroke(); c2.restore(); }
-        ST.yarnStroke(c2, pts, bw, Yc, { shadow: false, dim });
-        // ряды петель поперёк полосы
-        c2.save(); c2.strokeStyle = rgb(Yc.cDark, 0.28); c2.lineWidth = Math.max(0.8, s * 0.05); c2.lineCap = 'round';
-        const L = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / L, uy = (y1 - y0) / L, nx = -uy, ny = ux;
-        for (let k = 1; k < 5; k++) { const t = k / 5, px = x0 + (x1 - x0) * t, py = y0 + (y1 - y0) * t; for (const sgn of [-1, 1]) { c2.beginPath(); c2.moveTo(px + nx * sgn * bw * 0.36 - ux * s * 0.1, py + ny * sgn * bw * 0.36 - uy * s * 0.1); c2.lineTo(px + ux * s * 0.08, py + uy * s * 0.08); c2.stroke(); } }
-        c2.restore(); };
-      band(x + dxk, ym - dyk, x - dxk, ym + dyk, 0.16, false);
-      band(x - dxk, ym - dyk, x + dxk, ym + dyk, 0, true); } },
+      // узел-перекрут: две половины перекрещиваются в центре и концами обвивают встречную полосу (обмотка видна по бокам)
+      const A = [[x - s * 3.0, ym + Hh * 0.02], [x - s * 1.6, ym - Hh * 0.3], [x + s * 0.0, ym - Hh * 0.12], [x + s * 1.45, ym + Hh * 0.26], [x + s * 2.15, ym + Hh * 0.1]];
+      const B = A.map(([px, py]) => [2 * x - px, 2 * ym - py]);
+      const wf = (t) => Hh * 0.42 * (0.9 + 0.2 * Math.sin(Math.PI * t)) * (t > 0.86 ? 1 - (t - 0.86) * 1.8 : 1) * (t < 0.16 ? 0.35 + 0.65 * Math.sin(t / 0.16 * Math.PI / 2) : 1);
+      ribbon(c2, B, wf, Yc, s, { dim: 0.2, shadeEnd: 0.25, shadeStart: 0.16 });
+      ribbon(c2, A, wf, Yc, s, { shadeEnd: 0.25, shadeStart: 0.16 });
+      ribbon(c2, B, wf, Yc, s, { dim: 0.2, shadeEnd: 0.25, from: 0.7 });
+    } },
     buttons_center: { post(c2, g) { const x = g.padX + g.W * g.s / 2; for (let r = 0; r < g.H - 2; r += 2) button(c2, x, g.yOf(r) + g.h * 0.15, g.s * 0.27, [238, 226, 214], g.Yacc); } },
     buttons_top: { post(c2, g) { const r = g.H - 2; for (const k of [-1, 0, 1]) button(c2, g.cx + k * g.s * 2, g.yOf(r) + g.h * 0.2, g.s * 0.3, [240, 228, 218], g.Yacc); } },
     mug: { pre(c2, g) { const s = g.s, x0 = g.padX - s * 0.22, x1 = g.padX + g.W * s + s * 0.22, yT = g.yTop - s * 0.75, yB = g.castEdge + s * 0.55, cer = [250, 244, 240], cerD = [214, 196, 196];
@@ -266,10 +356,77 @@
       ST.yarnStroke(c2, [[x, y], [x + s * 0.55, y - s * 0.45], [x + s * 0.85, y - s * 0.1], [x + s * 0.55, y + s * 0.2], [x, y]], w, Y2, {});
       ST.yarnStroke(c2, [[x - s * 0.05, y + s * 0.05], [x - s * 0.3, y + s * 0.5], [x - s * 0.45, y + s * 0.75]], w * 0.9, Y2, {}); ST.yarnStroke(c2, [[x + s * 0.05, y + s * 0.05], [x + s * 0.32, y + s * 0.45], [x + s * 0.5, y + s * 0.72]], w * 0.9, Y2, {});
       const gr = c2.createRadialGradient(x - s * 0.05, y - s * 0.06, 1, x, y, s * 0.2); gr.addColorStop(0, rgb(Y2.cLight)); gr.addColorStop(1, rgb(Y2.cDark)); c2.fillStyle = gr; c2.beginPath(); c2.ellipse(x, y, s * 0.2, s * 0.17, 0, 0, 6.283); c2.fill(); } },
+    sole: { pre(c2, g) { // толстая войлочная подошва: силуэт тапочек, сдвинутый вниз
+      const { W, H, s, h } = g, F = { cBase: [214, 182, 156], cLight: [236, 214, 194], cDark: [168, 132, 108] };
+      c2.save(); const dy = s * 0.62;
+      for (const [col, off, ex] of [['rgba(110,50,70,0.22)', dy + s * 0.22, 0.12], [null, dy, 0.1]]) {
+        c2.fillStyle = col || (() => { const gr = c2.createLinearGradient(0, g.yTop, 0, g.castEdge + dy); gr.addColorStop(0, rgb(F.cLight)); gr.addColorStop(1, rgb(F.cDark)); return gr; })();
+        for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) if (!g.none(r, c)) { c2.beginPath(); c2.ellipse(g.colX(c), g.yOf(r) + off, s * (0.62 + ex), h * (0.72 + ex), 0, 0, 6.283); c2.fill(); } }
+      c2.restore(); } },
+    lining: { pre(c2, g) { // мягкая подкладка во входе тапочки: плюш, глубже к пятке
+      const s = g.s, h = g.h, hs = holes(g); c2.save();
+      if (!hs.length) { c2.restore(); return; } const ys = hs.map(([r]) => g.yOf(r)), y0 = Math.min(...ys) - h, y1 = Math.max(...ys) + h, gr = c2.createLinearGradient(0, y0, 0, y1);
+      gr.addColorStop(0, rgb(mix(g.Ymain.cDark, [60, 25, 40], 0.5))); gr.addColorStop(1, rgb(mix(g.Ymain.cBase, [150, 80, 100], 0.3))); c2.fillStyle = gr;
+      for (const [r, c] of hs) { const x = g.colX(c), y = g.yOf(r); c2.beginPath(); c2.ellipse(x, y, s * 0.75, h * 0.8, 0, 0, 6.283); c2.fill(); }
+      const R = rng(41); c2.lineCap = 'round';
+      for (const [r, c] of hs) for (let k = 0; k < 10; k++) { const x = g.colX(c) + (R() - 0.5) * s, y = g.yOf(r) + (R() - 0.5) * h; c2.strokeStyle = `rgba(255,240,245,${0.12 + R() * 0.15})`; c2.lineWidth = Math.max(0.7, s * 0.05); c2.beginPath(); c2.moveTo(x, y); c2.lineTo(x + (R() - 0.5) * s * 0.3, y - s * 0.2); c2.stroke(); }
+      c2.restore(); } },
+    pompom_pair: { post(c2, g) { // по большому пушистому помпону на мысок каждой тапочки
+      const groups = []; let cur = null;
+      for (let c = 0; c < g.W; c++) { const empty = g.topRow(c) < 0; if (empty) { cur = null; continue; } if (!cur) { cur = []; groups.push(cur); } cur.push(c); }
+      groups.forEach((cs, k) => { const cx = (g.colX(cs[0]) + g.colX(cs[cs.length - 1])) / 2; let lo = g.H; for (const c of cs) lo = Math.min(lo, g.botRow(c));
+        pompom(c2, cx, g.yOf(lo + 5) + g.h * 0.2, g.s * 1.5, g.Yacc, 6 + k); }); } },
+    hang_loop: { post(c2, g) { const s = g.s, [x, y] = topCenter(g); ST.yarnStroke(c2, [[x - s * 0.22, y + s * 0.3], [x - s * 0.5, y - s * 0.55], [x, y - s * 1.15], [x + s * 0.5, y - s * 0.55], [x + s * 0.22, y + s * 0.3]], s * 0.17, g.Yacc, {});
+      const gr = c2.createRadialGradient(x - s * 0.05, y + s * 0.15, 1, x, y + s * 0.2, s * 0.22); gr.addColorStop(0, rgb(g.Yacc.cLight)); gr.addColorStop(1, rgb(g.Yacc.cDark)); c2.fillStyle = gr; c2.beginPath(); c2.ellipse(x, y + s * 0.22, s * 0.24, s * 0.18, 0, 0, 6.283); c2.fill(); } },
+    shine: { fab: true, post(c2, g) { c2.save(); c2.globalCompositeOperation = 'source-atop'; const s = g.s, x = g.colX(2) + s * 0.2, y = g.yOf(Math.round(g.H * 0.45));
+      ST.yarnStroke(c2, [[x, y + s * 0.9], [x - s * 0.2, y], [x + s * 0.3, y - s * 1.1]], s * 0.26, { cBase: [255, 255, 255], cLight: [255, 255, 255], cDark: [240, 236, 240] }, { shadow: false }); c2.restore(); } },
+    sparkle: { post(c2, g) { const s = g.s, x = g.colX(g.W - 2), y = g.yOf(Math.round(g.H / 2)); star4(c2, x, y - s * 0.4, s * 0.55, GOLD); star4(c2, x + s * 0.7, y + s * 0.9, s * 0.32, GOLD); } },
+    face_small: { post(c2, g) { smallFace(c2, g, g.cx, g.faceY - g.s * 0.2); } },
+    stem: { pre(c2, g) { const s = g.s, x = g.cx, y = g.castEdge - s * 0.25; ST.yarnStroke(c2, [[x, y], [x + s * 0.1, y + s * 0.7], [x - s * 0.15, y + s * 1.45]], s * 0.24, GREEN, {});
+      if (g.def.item !== 'leaf') leafShape(c2, x + s * 0.05, y + s * 0.85, s * 1.2, -0.5, GREEN); } },
+    antennae: { post(c2, g) { const s = g.s, [x, y] = topCenter(g); const Yd = { cBase: [120, 80, 96], cLight: [160, 120, 132], cDark: [86, 52, 66] };
+      for (const d of [-1, 1]) { ST.yarnStroke(c2, [[x, y + s * 0.3], [x + d * s * 0.3, y - s * 0.5], [x + d * s * 0.9, y - s * 1.0]], s * 0.1, Yd, {}); knotDot(c2, x + d * s * 0.95, y - s * 1.05, s * 0.17, Yd.cBase); } } },
+    bow_tails: { post(c2, g) { const s = g.s, x = g.cx, y = g.yOf(Math.floor(g.H / 2)) + g.h * 0.4, Y2 = g.Yacc;
+      ribbon(c2, [[x - s * 0.2, y], [x - s * 0.7, y + s * 1.3], [x - s * 1.3, y + s * 2.6]], (t) => s * (0.75 - 0.2 * t), Y2, s, {});
+      ribbon(c2, [[x + s * 0.2, y], [x + s * 0.75, y + s * 1.2], [x + s * 1.2, y + s * 2.5]], (t) => s * (0.75 - 0.2 * t), Y2, s, {}); } },
+    window_light: { post(c2, g) { const s = g.s, h = g.h, warm = [255, 228, 160];
+      for (const [r, c] of holes(g)) { const x = g.colX(c), y = g.yOf(r); c2.save(); const gr = c2.createRadialGradient(x, y, 0, x, y, s * 0.8); gr.addColorStop(0, rgb(mix(warm, [255, 255, 255], 0.4))); gr.addColorStop(1, rgb(mix(warm, [230, 170, 110], 0.4)));
+        c2.fillStyle = gr; c2.fillRect(x - s * 0.5, y - h * 0.55, s, h * 1.1); c2.restore(); }
+      const hs = holes(g); if (!hs.length) return;
+      // переплёт: крестик в каждом окне 2×2
+      const seen = new Set(); for (const [r, c] of hs) { const k = (r >> 1) + ':' + (c >> 1); if (seen.has(k)) continue; seen.add(k); }
+      const groups = []; for (const [r, c] of hs) { let gg = groups.find(G => G.some(([rr, cc]) => Math.abs(rr - r) + Math.abs(cc - c) === 1)); if (gg) gg.push([r, c]); else groups.push([[r, c]]); }
+      for (const G of groups) { const xs = G.map(([r, c]) => g.colX(c)), ys = G.map(([r]) => g.yOf(r)); const x0 = Math.min(...xs) - s * 0.5, x1 = Math.max(...xs) + s * 0.5, y0 = Math.min(...ys) - h * 0.55, y1 = Math.max(...ys) + h * 0.55;
+        c2.strokeStyle = rgb(g.Yacc.cDark, 0.9); c2.lineWidth = Math.max(1.2, s * 0.12); c2.lineCap = 'round'; c2.beginPath(); c2.moveTo((x0 + x1) / 2, y0); c2.lineTo((x0 + x1) / 2, y1); c2.moveTo(x0, (y0 + y1) / 2); c2.lineTo(x1, (y0 + y1) / 2); c2.stroke();
+        c2.strokeRect(x0, y0, x1 - x0, y1 - y0); } } },
+    chimney: { pre(c2, g) { const s = g.s, c = g.W - 3, x = g.colX(c), yb = g.topY(c) + s * 0.9, yt = yb - s * 2.0, Y2 = g.Yacc;
+      c2.save(); const gr = c2.createLinearGradient(x - s * 0.55, 0, x + s * 0.55, 0); gr.addColorStop(0, rgb(Y2.cDark)); gr.addColorStop(0.4, rgb(Y2.cLight)); gr.addColorStop(1, rgb(Y2.cDark));
+      c2.fillStyle = gr; c2.fillRect(x - s * 0.55, yt, s * 1.1, yb - yt); c2.strokeStyle = rgb(Y2.cDark, 0.5); c2.lineWidth = 1; for (let k = 1; k < 4; k++) { c2.beginPath(); c2.moveTo(x - s * 0.55, yt + k * s * 0.45); c2.lineTo(x + s * 0.55, yt + k * s * 0.45); c2.stroke(); }
+      c2.fillStyle = 'rgba(255,255,255,0.75)'; for (const [dx, dy, r] of [[0.2, -0.5, 0.32], [0.6, -1.0, 0.4], [1.1, -1.6, 0.48]]) { c2.beginPath(); c2.arc(x + dx * s, yt + dy * s, r * s, 0, 6.283); c2.fill(); } c2.restore(); } },
+    stem_leaf: { post(c2, g) { const s = g.s, [x0, y0] = topCenter(g), x = g.cx, y = Math.max(y0, g.yTop) + s * 0.55; ST.yarnStroke(c2, [[x, y], [x + s * 0.08, y - s * 0.6], [x + s * 0.35, y - s * 1.2]], s * 0.26, BROWN, {}); leafShape(c2, x + s * 0.2, y - s * 0.75, s * 1.4, -0.45, GREEN); } },
+    cherry_stems: { post(c2, g) { const s = g.s, xa = g.colX(3), xb = g.colX(g.W - 4), ya = g.topY(3) + s * 0.2, yb = g.topY(g.W - 4) + s * 0.2, xt = g.cx + s * 0.4, yt = g.yTop - s * 2.0;
+      ST.yarnStroke(c2, [[xa, ya], [xa + s * 0.6, ya - s * 1.2], [xt, yt]], s * 0.18, GREEN, {}); ST.yarnStroke(c2, [[xb, yb], [xb - s * 0.4, yb - s * 1.1], [xt, yt]], s * 0.18, GREEN, {});
+      leafShape(c2, xt, yt + s * 0.05, s * 1.5, -0.25, GREEN); } },
+    fish_eye: { post(c2, g) { const s = g.s, y = g.yOf(Math.floor(g.H / 2) + 1), x = g.colX(2) + s * 0.2; knotDot(c2, x, y, s * 0.22, DARK);
+      c2.save(); c2.strokeStyle = rgb(g.Ymain.cDark, 0.5); c2.lineWidth = Math.max(1, s * 0.1); c2.lineCap = 'round'; c2.beginPath(); c2.arc(g.colX(4) - s * 0.5, g.yOf(Math.floor(g.H / 2)), s * 1.4, -0.75, 0.75); c2.stroke();
+      blush(c2, x + s * 0.4, y + s * 0.9, s * 0.38); c2.restore(); } },
+    bubbles: { post(c2, g) { const s = g.s, x = g.padX - s * 0.2, y = g.yOf(Math.floor(g.H / 2) + 2); c2.save(); c2.lineWidth = Math.max(1, s * 0.07);
+      for (const [dx, dy, r] of [[-0.2, -0.6, 0.22], [-0.6, -1.4, 0.3], [-0.2, -2.3, 0.38]]) { c2.strokeStyle = 'rgba(150,190,220,0.9)'; c2.fillStyle = 'rgba(235,246,255,0.5)'; c2.beginPath(); c2.arc(x + dx * s, y + dy * s, r * s, 0, 6.283); c2.fill(); c2.stroke();
+        c2.fillStyle = 'rgba(255,255,255,0.9)'; c2.beginPath(); c2.arc(x + (dx - r * 0.35) * s, y + (dy - r * 0.35) * s, r * s * 0.25, 0, 6.283); c2.fill(); } c2.restore(); } },
+    cherry_top: { post(c2, g) { const s = g.s, [x, y] = topCenter(g); ST.yarnStroke(c2, [[x, y - s * 0.3], [x + s * 0.15, y - s * 0.9], [x + s * 0.45, y - s * 1.25]], s * 0.12, BROWN, { shadow: false }); cherryBall(c2, x, y - s * 0.15, s * 0.58); } },
+    waffle: { fab: true, post(c2, g) { const s = g.s; let ra = 0; for (let r = 0; r < g.H; r++) { let full = true; for (let c = 0; c < g.W; c++) {} } 
+      const yT = g.yOf(6) - g.h * 0.5; c2.save(); c2.globalCompositeOperation = 'source-atop'; c2.beginPath(); c2.rect(g.padX - s, yT, g.W * s + 2 * s, g.castEdge - yT + s); c2.clip();
+      c2.strokeStyle = 'rgba(120,70,40,0.42)'; c2.lineWidth = Math.max(1, s * 0.11); for (let k = -12; k < 12; k++) { c2.beginPath(); c2.moveTo(g.padX + k * s * 1.1, yT); c2.lineTo(g.padX + k * s * 1.1 + s * 6, yT + s * 6); c2.stroke(); c2.beginPath(); c2.moveTo(g.padX + k * s * 1.1, yT); c2.lineTo(g.padX + k * s * 1.1 - s * 6, yT + s * 6); c2.stroke(); }
+      c2.restore(); } },
+    gems: { post(c2, g) { const s = g.s, tips = [0, Math.floor(g.W / 2), g.W - 1], cols = [[246, 150, 176], [150, 200, 230], [170, 220, 190]];
+      for (const c of tips) knotDot(c2, g.colX(c), g.topY(c) - s * 0.05, s * 0.3, [250, 214, 120]);
+      [-1, 0, 1].forEach((k, i) => { const x = g.cx + k * s * 3, y = g.yOf(0) - g.h * 0.5; c2.save(); c2.beginPath(); c2.moveTo(x, y - s * 0.45); c2.lineTo(x + s * 0.38, y); c2.lineTo(x, y + s * 0.45); c2.lineTo(x - s * 0.38, y); c2.closePath();
+        const gr = c2.createLinearGradient(x - s * 0.4, y - s * 0.4, x + s * 0.4, y + s * 0.4); gr.addColorStop(0, rgb(mix(cols[i], [255, 255, 255], 0.6))); gr.addColorStop(1, rgb(mix(cols[i], [60, 40, 60], 0.25))); c2.fillStyle = gr; c2.fill(); c2.strokeStyle = 'rgba(120,80,60,0.6)'; c2.lineWidth = 1; c2.stroke(); c2.restore(); }); } },
     face_dog: { post(c2, g) { face(c2, g, 'dog'); } },
     face_bunny: { post(c2, g) { face(c2, g, 'bunny'); } },
     face_bear: { post(c2, g) { face(c2, g, 'bear'); } },
   };
+  DECO.hang_loop_l = DECO.hang_loop; DECO.tassel_bottom2 = DECO.tassel_bottom;
 
   /* Готовая вещь целиком: getE(r, c) → {code, kind, seed} | null (вне силуэта); ряды снизу вверх. */
   function render(def, getE0, castCode, s, h, dpr) {

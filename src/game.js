@@ -945,13 +945,14 @@
   window.__petelka = {
     G, tap: (i) => tapBall(i), hint: () => G.level.solve().hint, unravel: doUnravel,
     state: () => ({ dpr: G.dpr, level: G.level.def.id, row: G.level.row, col: G.level.col, done: G.level.done, amounts: G.level.balls.map(b => b.amount), vis: G.vis.amounts.slice(), queue: G.queue.length, active: G.active.length, card: !!G.card, wardrobe: G.wardrobeCount }),
-    ballPos: () => G.ballPos.map(p => [p[0], p[1]]), next: () => G.card && nextLevel(), cardBtn: () => G.card && G.card.btn,
+    ballPos: () => G.ballPos.map(p => [p[0], p[1]]), next: () => G.card && nextLevel(), askLater: () => { if (G.ask) { G.ask = null; nextLevel(); } }, cardBtn: () => G.card && G.card.btn,
     pause: (v) => { G.paused = v; }, advance: (ms) => { G.manual = ms / 1000; },
     fpsStart: () => { G.fps = []; G.fpsOn = true; }, fpsStop: () => { G.fpsOn = false; const a = G.fps.slice(2); const avg = a.reduce((x, y) => x + y, 0) / a.length; const sorted = a.slice().sort((x, y) => x - y); return { frames: a.length, avgFps: 1 / avg, p95ms: sorted[Math.floor(a.length * 0.95)] * 1000, worstMs: sorted[a.length - 1] * 1000 }; },
     goto: (n) => startLevel(n - 1),
     gift: () => { G.card = null; startGift(); }, giftReady: () => !!GIFT, note: () => openNote(), noteState: () => G.note && { done: G.note.done, chars: G.note.chars },
     // предпросмотр готовой вещи без игры (для галерей/шкафа): ? → первый клубок, A/B → A
     ward: () => openWard(), addItems: (n) => { for (let i = 0; i < n; i++) { const d = LEVELS[i]; G.items.push({ lv: d.id, item: d.item, cw: d.cw, codes: null }); } },
+    renderAny: (def, s = 36, dpr = 2) => renderDef(def, s, dpr).full.toDataURL("image/png"),
     renderLevel: (i, s = 36, dpr = 2) => { const def = LEVELS[i]; const R = renderDef(def, s, dpr); return R.full.toDataURL('image/png'); },
   };
 })();
