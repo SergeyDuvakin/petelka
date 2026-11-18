@@ -735,7 +735,7 @@
       if (!G.special) { const L = G.level; const codes = G.vis.st.map(row => row.map(e => e ? e.code.split('@')[0] : null));
         G.items = G.items.filter(x => x.lv !== L.def.id); G.items.push({ lv: L.def.id, item: L.def.item, cw: L.def.cw, codes }); }
       G.particles.burst(G.W - 34, G.st + 36, 18, { col: [255, 236, 242], speed: 70, life: 0.9, r: 2, g: 30, star: true });
-      if (!G.special) { const nb = newBadges(); if (nb.length) setTimeout(() => { for (const b of nb) banner(b.t, 2.6); A.cheer(); G.wardrobeBump.vel = 14; G.particles.burst(G.W - 34, G.st + 36, 30, { col: [255, 226, 160], speed: 90, life: 1.1, r: 2.4, g: 20, star: true }); }, 900); }
+      if (!G.special) { const nb = newBadges(); if (nb.length) setTimeout(() => { (nb.length > 2 ? [nb[0], { t: `и ещё ${nb.length - 1} — загляни в шкаф` }] : nb).forEach(b => banner(b.t, 2.6)); A.cheer(); G.wardrobeBump.vel = 14; G.particles.burst(G.W - 34, G.st + 36, 30, { col: [255, 226, 160], speed: 90, life: 1.1, r: 2.4, g: 20, star: true }); }, 900); }
       save();
     }
     if (t > 2.35 && !G.card && !G.note && !G.ask && !it.noted) { it.noted = true; if (G.special) openNote(); else openCard(it.snap); }   // один раз: иначе карточка вставала заново под вопросом о подарке
@@ -896,8 +896,9 @@
     let y = vy - w.scroll; const slot = (pw - 24) / 4;
     const vis = (yy, hh) => yy + hh > vy && yy < vy + vh;
     // праздник: награды, которые ещё не показывали в шкафу, проявляются по очереди (и шкаф сам прокручивается к первой)
-    const cel = w.cel, celT = (key) => { if (cel[key] == null) { cel[key] = Math.max(G.now + 0.5, w.celNext || 0); w.celNext = cel[key] + 1.1; } return clamp((G.now - cel[key]) / 0.7, 0, 1); };
-    const celebrate = (key, kind, id, px, py) => { const t = celT(key); if (t >= 1 && !cel[key + '!']) { cel[key + '!'] = 1; if (kind === 'r') G.badges.r.push(id); else G.badges.g.push(id); save(); } if (t > 0 && !cel[key + '*']) { cel[key + '*'] = 1; A.cheer(); G.wfx.burst(px, py, 26, { col: [255, 222, 150], speed: 80, life: 1.0, r: 2.3, g: 25, star: true }); } return t; };
+    // первые три — с колокольчиками и искрами по очереди, остальные (старое сохранение с кучей наград) — быстро и тихо
+    const cel = w.cel, celT = (key) => { if (cel[key] == null) { w.celN = (w.celN || 0) + 1; cel[key] = Math.max(G.now + 0.5, w.celNext || 0); cel[key + '#'] = w.celN; w.celNext = cel[key] + (w.celN < 3 ? 1.1 : 0.15); } return clamp((G.now - cel[key]) / 0.7, 0, 1); };
+    const celebrate = (key, kind, id, px, py) => { const t = celT(key); if (t >= 1 && !cel[key + '!']) { cel[key + '!'] = 1; if (kind === 'r') G.badges.r.push(id); else G.badges.g.push(id); save(); } if (t > 0 && !cel[key + '*'] && cel[key + '#'] <= 3) { cel[key + '*'] = 1; A.cheer(); G.wfx.burst(px, py, 26, { col: [255, 222, 150], speed: 80, life: 1.0, r: 2.3, g: 25, star: true }); } return t; };
     // подарочный свитер «Для Н.» — по тапу снова открывается записка
     if (G.gs.done && GIFT) {
       const gh = 112; text('Для Н.', x0 + 22, y + 16, 22, '#A0607A', 'Marck', 400, 'left');
