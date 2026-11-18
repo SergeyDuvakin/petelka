@@ -5,7 +5,14 @@
   const SEG = { legL: 14, head: 12, legR: 14 };
 
   // Геометрия: origin = нормальное положение центра головки; stretch поднимает головку (петля на спице)
-  function geometry(s, h, stretch, seed) {
+  /* Виды петель (визуально; логика уровня от них не зависит):
+     k — лицевая «V»; p — изнаночная (поперечный бугорок + «улыбка» снизу: платочная, резинка, путанка);
+     b — шишечка (лицевая + объёмный шарик из витков); y — ажурная дырочка (накид: кольцо нити вокруг просвета);
+     / и \ — петли косы (наклонённая вытянутая «V» с глубокой тенью). На спице все виды выглядят как петля. */
+  const LOOPY = { k: 1, b: 1, '/': 1, '\\': 1 };
+  function geometry(s, h, stretch, seed, kind) {
+    if (kind === 'p' && stretch < 0.3 * h) return purlGeometry(s, h, stretch, seed);
+    if (kind === 'y' && stretch < 0.3 * h) return eyeletGeometry(s, h, stretch, seed);
     const r = rng(seed * 7919 + 13);
     const j = () => (r() - 0.5) * 0.035 * s;
     const yh = -stretch;
@@ -37,12 +44,61 @@
     return { pts, seg, len, total: len[len.length - 1], LT, RT };
   }
 
+  function finish(pts, seg) {
+    const len = [0];
+    for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    return { pts, seg, len, total: len[len.length - 1] };
+  }
+  // изнаночная: нить идёт «улыбкой» снизу и возвращается поперечным бугорком сверху
+  function purlGeometry(s, h, stretch, seed) {
+    const r = rng(seed * 4241 + 5); const j = () => (r() - 0.5) * 0.04 * s; const yh = -stretch * 0.5;
+    const pts = [], seg = [];
+    const push = (a, b, c, d, n, id, skip) => { for (let i = skip ? 1 : 0; i <= n; i++) { pts.push(cubic(a, b, c, d, i / n)); seg.push(id); } };
+    // «улыбка» (тоньше, в тени) и широкий пологий бугорок, перекрывающий соседей — ряд читается волной
+    const A = [-0.36 * s, 0.7 * h + yh], B = [0.36 * s, 0.7 * h + yh];
+    push(A, [-0.2 * s, 1.08 * h + yh], [0.2 * s, 1.08 * h + yh], B, 12, 5, false);
+    const C = [0.56 * s + j(), 0.5 * h + yh], D = [-0.56 * s + j(), 0.5 * h + yh];
+    push(B, [0.48 * s, 0.66 * h + yh], [0.56 * s, 0.6 * h + yh], C, 3, 4, true);
+    push(C, [0.36 * s, 0.02 * h + yh + j()], [-0.36 * s, 0.02 * h + yh + j()], D, 16, 0, true);
+    const g = finish(pts, seg); g.purl = true; return g;
+  }
+  // накид: кольцо нити вокруг просвета
+  function eyeletGeometry(s, h, stretch, seed) {
+    const pts = [], seg = []; const cy = 0.5 * h - stretch * 0.5, rx = 0.26 * s, ry = 0.36 * h;
+    for (let i = 0; i <= 30; i++) { const a = Math.PI / 2 + i / 30 * Math.PI * 2 * 0.96; pts.push([Math.cos(a) * rx, cy + Math.sin(a) * ry]); seg.push(0); }
+    const g = finish(pts, seg); g.hole = { cy, rx, ry }; return g;
+  }
+  // шишечка: объёмный шарик из витков, вырастает вслед за нитью
+  function drawBobble(ctx, x, y, R, Y, k, seed) {
+    if (k <= 0.01) return; const r = R * (0.35 + 0.65 * k); const q = rng(seed * 97 + 1);
+    ctx.save();
+    ctx.fillStyle = 'rgba(130,60,85,0.22)'; ctx.beginPath(); ctx.ellipse(x + r * 0.12, y + r * 0.32, r * 1.02, r * 0.86, 0, 0, 6.283); ctx.fill();
+    const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.38, r * 0.08, x, y, r);
+    g.addColorStop(0, rgb(Y.cLight)); g.addColorStop(0.6, rgb(Y.cBase)); g.addColorStop(1, rgb(Y.cDark));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = rgb(Y.cDark, 0.85); ctx.lineWidth = Math.max(0.8, r * 0.07); ctx.stroke();
+    ctx.save(); ctx.beginPath(); ctx.arc(x, y, r * 0.97, 0, 6.283); ctx.clip(); ctx.lineCap = 'round';
+    for (let i = 0; i < 6; i++) {
+      const a = -0.9 + i * 0.36 + (q() - 0.5) * 0.2, ky = 0.35 + q() * 0.4;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(a);
+      ctx.beginPath(); ctx.ellipse(0, 0, r * 0.98, r * ky, 0, 0.2, Math.PI - 0.2); ctx.strokeStyle = rgb(Y.cDark, 0.4); ctx.lineWidth = r * 0.2; ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0, -r * 0.03, r * 0.98, r * ky, 0, 0.35, Math.PI - 0.35); ctx.strokeStyle = rgb(mix(Y.cBase, Y.cLight, 0.55), 0.9); ctx.lineWidth = r * 0.1; ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+    const g2 = ctx.createRadialGradient(x - r * 0.3, y - r * 0.4, 0, x - r * 0.3, y - r * 0.4, r * 0.6);
+    g2.addColorStop(0, 'rgba(255,255,255,0.35)'); g2.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = rgb(Y.cFuzz, 0.5); ctx.lineWidth = 0.7; ctx.beginPath();
+    for (let i = 0; i < 10; i++) { const a = q() * 6.283; const x0 = x + Math.cos(a) * r, y0 = y + Math.sin(a) * r; ctx.moveTo(x0, y0); ctx.lineTo(x0 + Math.cos(a + 0.4) * r * 0.22, y0 + Math.sin(a + 0.4) * r * 0.22); }
+    ctx.stroke(); ctx.restore();
+  }
+
   // ворсинки и блёстки (локальные, на нормальную геометрию)
   const extrasCache = new Map();
-  function extras(s, h, seed, lurex) {
-    const key = s.toFixed(1) + '|' + seed + '|' + (lurex ? 1 : 0);
+  function extras(s, h, seed, lurex, kind) {
+    const key = s.toFixed(1) + '|' + seed + '|' + (lurex ? 1 : 0) + (kind || 'k');
     if (extrasCache.has(key)) return extrasCache.get(key);
-    const g = geometry(s, h, 0, seed); const r = rng(seed * 31 + 7);
+    const g = geometry(s, h, 0, seed, kind); const r = rng(seed * 31 + 7);
     const hairs = [], fibers = [], sparks = [];
     for (let i = 0; i < 9; i++) {
       const t = 0.04 + r() * 0.9; const idx = Math.floor(t * (g.pts.length - 2));
@@ -91,25 +147,43 @@
     const p0 = g.pts[i - 1], p1 = g.pts[i]; const t = (d - g.len[i - 1]) / (g.len[i] - g.len[i - 1] || 1);
     return { x: p0[0] + (p1[0] - p0[0]) * t, y: p0[1] + (p1[1] - p0[1]) * t, a: Math.atan2(p1[1] - p0[1], p1[0] - p0[0]) + Math.PI / 2 };
   }
-  const LEGS = [true, false, true, false, false], HEAD = [false, true, false, false, false], TAPER = [false, false, false, true, true];
+  const LEGS = [true, false, true, false, false, false], HEAD = [false, true, false, false, false, false], TAPER = [false, false, false, true, true, false], SMILE = [false, false, false, false, false, true];
   /* o: {s,h,yarn,seed,progress,stretch,squash,thick,part:'body'|'headFront', start:0}
      progress — доля длины нити, start — откуда (для распускания тоже 0) */
   function draw(ctx, x, y, o) {
-    const s = o.s, h = o.h, Y = o.yarn;
-    const g = geometry(s, h, o.stretch || 0, o.seed);
+    const s = o.s, h = o.h, Y = o.yarn, kind = o.kind || 'k';
+    const g = geometry(s, h, o.stretch || 0, o.seed, kind);
     const p = o.progress == null ? 1 : o.progress;
     if (p <= 0.001) return g;
     const L = g.total * p;
-    const thick = (o.thick || 1);
+    const thick = (o.thick || 1) * (kind === 'p' && g.hole === undefined && !g.LT ? 0.9 : kind === 'y' && !g.LT ? 0.42 : 1);
     const wLeg = 0.44 * s * thick, wHead = 0.31 * s * thick;
     ctx.save();
     ctx.translate(x, y);
+    // коса: петля наклонена и вытянута; на спице наклон уходит
+    if ((kind === '/' || kind === '\\') && o.part !== 'headFront') {
+      const f = clamp(1 - (o.stretch || 0) / (0.6 * h), 0, 1); const a = (kind === '/' ? -0.36 : 0.36) * f;
+      ctx.translate(0, 0.45 * h); ctx.rotate(a); ctx.scale(1 - 0.1 * f, 1 + 0.1 * f); ctx.translate(0, -0.45 * h);
+      if (f > 0.5) { ctx.fillStyle = 'rgba(120,55,80,0.16)'; ctx.beginPath(); ctx.ellipse((kind === '/' ? 0.22 : -0.22) * s, 0.55 * h, 0.2 * s, 0.6 * h, 0, 0, 6.283); ctx.fill(); }
+    }
+    // изнанка: углублённая «подложка» между бугорками (тень внутрь полотна), растёт вместе с нитью
+    if (g.purl && o.part !== 'headFront' && o.part !== 'legs') {
+      ctx.save(); ctx.globalAlpha = clamp(p * 1.5, 0, 1);
+      const gg = ctx.createLinearGradient(0, 0.05 * h, 0, 1.15 * h); gg.addColorStop(0, rgb(mix(Y.cDark, Y.cBase, 0.35))); gg.addColorStop(1, rgb(mix(Y.cDark, [90, 50, 60], 0.18)));
+      ctx.fillStyle = gg; ctx.beginPath(); ctx.roundRect(-0.5 * s, 0.12 * h, s, 1.0 * h, 0.12 * s); ctx.fill(); ctx.restore();
+    }
+    // ажур: сначала просвет (тень в глубину полотна)
+    if (g.hole && o.part !== 'headFront') {
+      const hl = g.hole; const gg = ctx.createRadialGradient(0, hl.cy, 0, 0, hl.cy, hl.rx * 1.2);
+      gg.addColorStop(0, 'rgba(92,40,62,0.55)'); gg.addColorStop(0.7, 'rgba(110,50,75,0.38)'); gg.addColorStop(1, 'rgba(110,50,75,0.05)');
+      ctx.fillStyle = gg; ctx.beginPath(); ctx.ellipse(0, hl.cy, hl.rx * 1.05, hl.ry * 1.05, 0, 0, 6.283); ctx.fill();
+    }
     if (o.squash && o.squash !== 1) { ctx.translate(0, -(o.stretch || 0)); ctx.scale(1, o.squash); ctx.translate(0, (o.stretch || 0)); }
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     const headFront = o.part === 'headFront';
     // головка рисуется до ножек: в полотне её прикрывают ножки
     const wTap = (wLeg + wHead) / 2;
-    const passes = headFront ? [[HEAD, wHead]] : o.part === 'legs' ? [[TAPER, wTap], [LEGS, wLeg]] : (o.stretch > 0.3 * h ? [[LEGS, wLeg], [TAPER, wTap], [HEAD, wHead]] : [[HEAD, wHead], [TAPER, wTap], [LEGS, wLeg]]);
+    const passes = g.purl ? [[SMILE, wHead * 0.62], [TAPER, wTap * 0.8], [LEGS, wLeg]] : headFront ? [[HEAD, wHead]] : o.part === 'legs' ? [[TAPER, wTap], [LEGS, wLeg]] : (o.stretch > 0.3 * h ? [[LEGS, wLeg], [TAPER, wTap], [HEAD, wHead]] : [[HEAD, wHead], [TAPER, wTap], [LEGS, wLeg]]);
     if (!headFront) {
       ctx.save(); ctx.translate(0.03 * s, 0.075 * s);
       for (const [segs, w] of passes) {
@@ -141,6 +215,20 @@
       }
       ctx.stroke();
     });
+    // меланж: вкрапления второго цвета в скрутке
+    if (Y.cFleck) {
+      ctx.save(); ctx.lineCap = 'round';
+      layer((segs, w) => {
+        // неравномерные короткие крапинки, приглушённые (не «строчка»)
+        ctx.setLineDash([w * 0.08, w * 0.55, w * 0.16, w * 0.9, w * 0.05, w * 0.4]); ctx.lineDashOffset = (o.seed % 7) * w * 0.23;
+        ctx.translate(0.03 * s, -0.02 * s);
+        ctx.beginPath(); tracePart(ctx, g, 0, L, segs); ctx.strokeStyle = rgb(Y.cFleck, 0.6); ctx.lineWidth = Math.max(0.7, w * 0.16); ctx.stroke();
+        ctx.translate(-0.08 * s, 0.05 * s); ctx.lineDashOffset = w * (0.5 + (o.seed % 3) * 0.3);
+        ctx.beginPath(); tracePart(ctx, g, 0, L, segs); ctx.strokeStyle = rgb(mix(Y.cFleck, Y.cDark, 0.35), 0.4); ctx.lineWidth = Math.max(0.6, w * 0.11); ctx.stroke();
+        ctx.translate(0.05 * s, -0.03 * s);
+      });
+      ctx.restore();
+    }
     // люрекс: тонкая металлическая нить, вкрученная в пряжу
     if (Y.lurex) {
       ctx.save(); ctx.lineCap = 'round';
@@ -156,7 +244,7 @@
     }
     // 6. волокна и пух — отрастают вслед за нитью
     if (!headFront && o.part !== 'legs') {
-      const e = extras(s, h, o.seed, !!Y.lurex);
+      const e = extras(s, h, o.seed, !!Y.lurex, g.LT ? 'k' : kind);
       if (!(o.stretch > 0.5)) {
         ctx.lineWidth = Math.max(0.5, 0.012 * s);
         ctx.strokeStyle = rgb(Y.cLight, 0.55);
@@ -178,29 +266,29 @@
 
   // атлас: целая петля (progress 1, stretch 0) на каждый цвет × 4 варианта
   const atlas = new Map();
-  function sprite(s, h, code, seed, dpr) {
-    const v = seed; const key = code + v + '|' + s.toFixed(2) + '|' + dpr;
+  function sprite(s, h, code, seed, dpr, kind) {
+    const v = seed; const key = code + v + (kind || 'k') + '|' + s.toFixed(2) + '|' + dpr;
     let c = atlas.get(key);
     if (!c) {
       c = document.createElement('canvas');
       const w = Math.ceil(s * 1.5), hh = Math.ceil(h * 2.25);
       c.width = Math.ceil(w * dpr); c.height = Math.ceil(hh * dpr);
       const x = c.getContext('2d'); x.scale(dpr, dpr);
-      draw(x, w / 2, h * 0.6, { s, h, yarn: P.YARN[code], seed: v, progress: 1 });
+      draw(x, w / 2, h * 0.6, { s, h, yarn: P.yarn(code), seed: v, progress: 1, kind });
       c._ox = w / 2; c._oy = h * 0.6; c._w = w; c._h = hh;
       atlas.set(key, c);
     }
     return c;
   }
-  function drawSprite(ctx, x, y, s, h, code, seed, dpr) {
-    const c = sprite(s, h, code, seed, dpr);
+  function drawSprite(ctx, x, y, s, h, code, seed, dpr, kind) {
+    const c = sprite(s, h, code, seed, dpr, kind);
     ctx.drawImage(c, x - c._ox, y - c._oy, c._w, c._h);
   }
   // петли, висящие на спице (растянутые), тоже из кэша: растяжение квантуется по 1.5 px
   const held = new Map();
-  function drawHeldSprite(ctx, x, y, s, h, code, seed, stretch, dpr) {
+  function drawHeldSprite(ctx, x, y, s, h, code, seed, stretch, dpr, kind) {
     const q = Math.round(stretch / 1.5) * 1.5;
-    const key = code + seed + '|' + q + '|' + s.toFixed(2) + '|' + dpr;
+    const key = code + seed + (kind || 'k') + '|' + q + '|' + s.toFixed(2) + '|' + dpr;
     let c = held.get(key);
     if (!c) {
       if (held.size > 600) held.clear();
@@ -208,12 +296,12 @@
       const w = Math.ceil(s * 1.5), hh = Math.ceil(h * 2.25 + q);
       c.width = Math.ceil(w * dpr); c.height = Math.ceil(hh * dpr);
       const x2 = c.getContext('2d'); x2.scale(dpr, dpr);
-      draw(x2, w / 2, h * 0.6 + q, { s, h, yarn: P.YARN[code], seed, progress: 1, stretch: q });
+      draw(x2, w / 2, h * 0.6 + q, { s, h, yarn: P.yarn(code), seed, progress: 1, stretch: q, kind });
       c._ox = w / 2; c._oy = h * 0.6 + q; c._w = w; c._h = hh;
       held.set(key, c);
     }
     ctx.drawImage(c, x - c._ox, y - c._oy, c._w, c._h);
   }
   function clearAtlas() { atlas.clear(); extrasCache.clear(); held.clear(); }
-  P.Stitch = { draw, geometry, extras, drawSprite, drawHeldSprite, clearAtlas };
+  P.Stitch = { drawBobble, draw, geometry, extras, drawSprite, drawHeldSprite, clearAtlas };
 })();

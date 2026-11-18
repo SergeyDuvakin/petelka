@@ -15,8 +15,8 @@
     wardrobeCount: 0, wardrobeBump: new Spring(0, 260, 0.35), card: null, fade: 0, fadeT: null,
     deadEndAt: 0, deadEnd: false, hintBall: -1, wrongStreak: 0, stats: { taps: 0, wrong: 0 },
   });
-  const LEVELS = window.PETELKA_LEVELS;
-  const SAVE_KEY = 'petelka.m0';
+  const LEVELS = qs.has('demo') && window.PETELKA_DEMO ? window.PETELKA_DEMO : window.PETELKA_LEVELS;
+  const SAVE_KEY = qs.has('demo') ? 'petelka.demo' : 'petelka.m0';
   const save = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ level: G.levelIdx, wardrobe: G.wardrobeCount, sound: A.enabled })); } catch (e) {} };
   const load = () => { try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; } };
 
@@ -87,6 +87,7 @@
     for (let r = 0; r < L.H; r++) G.vis.st.push(new Array(L.W).fill(null));
     for (let c = 0; c < L.W; c++) G.vis.cast.push({ code: castCode, seed: seed(-1, c) });
     G.vis.radius.forEach((s, i) => s.snap(ballR(i)));
+    G.tex = def.tex ? def.tex.map(r => r.trim().split(/\s+/)) : null;
     G.motifCells = [];
     if (def.motif) for (let r = 0; r < L.H; r++) for (let c = 0; c < L.W; c++) { const cell = L.cells[r][c]; if (!cell.any && cell.opts.length === 1 && cell.opts[0] === def.motif.color) G.motifCells.push([r, c]); }
     G.rope = new S.Rope(18); G.queue = []; G.active = []; G.gate = 0; G.card = null;
@@ -94,6 +95,9 @@
     G.hintBall = G.level.solve().hint;
     save();
   }
+  // фактура: def.tex — ряды снизу вверх, по символу на петлю (k p b y / \\); по умолчанию лицевая
+  const kindAt = (r, c) => { const t = G.tex; return t && t[r] && t[r][c] && t[r][c] !== '.' ? t[r][c] : 'k'; };
+  const gradT = (r, c) => { const L = G.level; return (r * L.W + (L.W - 1 - c)) / Math.max(1, L.W * L.H - 1); };
   const ballR = (i) => { const v = G.vis, L = G.level; const a = v.amounts[i], m = L.balls[i].max; return a <= 0 ? G.r0 * 0.5 : G.r0 * (0.62 + 0.38 * Math.sqrt(a / m)); };
   const colX = (c) => G.fx + (c + 0.5) * G.s;
   const rowNormalY = (r) => G.vis.Fy.v - r * G.h;
@@ -149,7 +153,7 @@
       if (it.type === 'stitch') {
         const pending = G.queue.filter(q => q.type === 'stitch' || q.type === 'wrong').length;
         it.D = durFor(pending);
-        const entry = { code: it.code, seed: v.seed(it.row, it.col), t0: it.t0, D: it.D, anim: it };
+        const entry = { code: P.yarnAt(it.code, gradT(it.row, it.col)), kind: kindAt(it.row, it.col), seed: v.seed(it.row, it.col), t0: it.t0, D: it.D, anim: it };
         v.st[it.row][it.col] = entry; v.row = it.row; v.col = it.col;
         kickBall(it.ball);
         if (v.activeBall !== it.ball) { passColor(v.activeBall, it.ball); v.activeBall = it.ball; }
@@ -405,10 +409,10 @@
   function drawHanging() {
     const v = G.vis, L = G.level; if (!v || (v.item && v.item.snap)) { if (v && v.item) drawHangOnly(); return; }
     // нить: старый цвет, поверх — новый, «стекающий» от клубка к спице
-    const ry = Y[L.balls[v.activeBall].code], rw = Math.max(2.8, G.s * 0.08), n = G.rope.n;
+    const ry = P.yarn(P.yarnAt(L.balls[v.activeBall].code, gradT(Math.min(v.row, L.H - 1), Math.max(0, v.col)))), rw = Math.max(2.8, G.s * 0.08), n = G.rope.n;
     if (v.wave) {
       const k = clamp((G.now - v.wave.t0) / 0.16, 0, 1); const m = Math.round(k * (n - 1));
-      G.rope.draw(ctx, Y[v.wave.from], rw);
+      G.rope.draw(ctx, P.yarn(P.yarnAt(v.wave.from, 0.5)), rw);
       if (m >= 1) G.rope.draw(ctx, ry, rw, 0, m, false);
       const p = G.rope.p[Math.min(n - 1, m)];
       if (k < 1) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const g = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], 9); g.addColorStop(0, 'rgba(255,245,240,0.8)'); g.addColorStop(1, 'rgba(255,245,240,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p[0], p[1], 9, 0, 6.283); ctx.fill(); ctx.restore(); }
@@ -512,11 +516,11 @@
         ctx.setLineDash([]); text('?', x, cy - 1, 13, 'rgba(160,100,120,0.9)', 'Nunito', 800);
       } else if (cell.opts.length > 1) {
         ctx.save(); ctx.beginPath(); ctx.rect(x - s * 0.5, cy - 16, s * 0.5, 34); ctx.clip();
-        ST.draw(ctx, x, cy - 6, { s: s * k * 1.6, h: G.h * k * 1.6, yarn: Y[cell.opts[0]], seed: 1, progress: 1, part: 'legs' }); ctx.restore();
+        ST.draw(ctx, x, cy - 6, { s: s * k * 1.6, h: G.h * k * 1.6, yarn: Y[cell.opts[0]], seed: 1, progress: 1, part: 'legs', kind: kindAt(r, c) }); ctx.restore();
         ctx.save(); ctx.beginPath(); ctx.rect(x, cy - 16, s * 0.5, 34); ctx.clip();
-        ST.draw(ctx, x, cy - 6, { s: s * k * 1.6, h: G.h * k * 1.6, yarn: Y[cell.opts[1]], seed: 1, progress: 1, part: 'legs' }); ctx.restore();
+        ST.draw(ctx, x, cy - 6, { s: s * k * 1.6, h: G.h * k * 1.6, yarn: Y[cell.opts[1]], seed: 1, progress: 1, part: 'legs', kind: kindAt(r, c) }); ctx.restore();
       } else {
-        ST.draw(ctx, x, cy - 6, { s: s * k * 1.6, h: G.h * k * 1.6, yarn: Y[cell.opts[0]], seed: 1, progress: 1, part: 'legs' });
+        ST.draw(ctx, x, cy - 6, { s: s * k * 1.6, h: G.h * k * 1.6, yarn: Y[cell.opts[0]], seed: 1, progress: 1, part: 'legs', kind: kindAt(r, c) });
       }
       if (knitted) { ctx.restore(); ctx.save(); ctx.strokeStyle = 'rgba(176,116,136,0.75)'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(x - 5, cy + 1); ctx.lineTo(x - 1, cy + 5); ctx.lineTo(x + 6, cy - 4); ctx.stroke(); }
       ctx.restore();
@@ -585,10 +589,10 @@
     const drawOne = (r, c, e) => {
       const stt = stitchState(r, c, e); const x = colX(c);
       if (stt.progress <= 0) return;
-      const Yc = Y[e.code];
-      if (!stt.live) ST.drawSprite(ctx, x, stt.y, s, h, e.code, e.seed, G.dpr);
-      else if (!stt.animating && stt.progress >= 1) ST.drawHeldSprite(ctx, x, stt.y, s, h, e.code, e.seed, stt.stretch, G.dpr);
-      else ST.draw(ctx, x, stt.y + stt.offY, { s, h, yarn: Yc, seed: e.seed, progress: stt.progress, stretch: stt.stretch, squash: stt.squash, fuzz: stt.fuzz });
+      const Yc = P.yarn(e.code);
+      if (!stt.live) ST.drawSprite(ctx, x, stt.y, s, h, e.code, e.seed, G.dpr, e.kind);
+      else if (!stt.animating && stt.progress >= 1) ST.drawHeldSprite(ctx, x, stt.y, s, h, e.code, e.seed, stt.stretch, G.dpr, e.kind);
+      else ST.draw(ctx, x, stt.y + stt.offY, { s, h, yarn: Yc, seed: e.seed, progress: stt.progress, stretch: stt.stretch, squash: stt.squash, fuzz: stt.fuzz, kind: e.kind });
       if (Yc.lurex && stt.stretch < 1 && G.lurexOn !== false) {
         const ex = ST.extras(s, h, e.seed, true);
         S.drawSparks(ctx, ex.sparks.filter(p => p.t <= stt.progress).map(p => ({ x: x + p.x, y: stt.y + stt.offY + p.y, ph: p.ph, per: p.per, r: p.r })), G.now, Yc.lurex, s / 40);
@@ -599,15 +603,21 @@
     for (let c = 0; c < L.W; c++) drawOne(-1, c, v.cast[c]);
     drawEdge(ctx, v.Fy.v + G.h * 0.55 + G.h * 1.12, Y[v.castCode]);
     for (let r = 0; r < L.H; r++) for (let c = 0; c < L.W; c++) { const e = v.st[r][c]; if (e) drawOne(r, c, e); }
+    // шишечки — отдельным проходом поверх соседних рядов (иначе их прикрывают ножки ряда выше)
+    if (G.tex) for (let r = 0; r < L.H; r++) for (let c = 0; c < L.W; c++) {
+      const e = v.st[r][c]; if (!e || e.kind !== 'b') continue; const stt = stitchState(r, c, e); if (stt.stretch > 0.5 * h) continue;
+      const k = e.t0 != null ? clamp(((G.now - e.t0) / e.D - 0.6) / 0.5, 0, 1) : 1;
+      ST.drawBobble(ctx, colX(c), stt.y + stt.offY + 0.42 * h, 0.4 * s, P.yarn(e.code), e.unknitT0 ? stt.progress : E.outBack(k), e.seed);
+    }
     // ошибочная петля: вытягивается наполовину и распускается обратно (без исчезновения)
     for (const it of G.active) if (it.type === 'wrong') {
       const t = G.now - it.t0, t1 = it.D * 0.36; if (t < t1) continue;
       let pr; const u = t - t1;
       if (u < 0.13) pr = 0.5 * E.outCubic(u / 0.13); else if (u < 0.19) pr = 0.5; else pr = 0.5 * (1 - E.inOutCubic(clamp((u - 0.19) / 0.22, 0, 1)));
-      if (pr > 0.01) ST.draw(ctx, colX(it.col) + Math.sin(u * 40) * 1.2 * (u > 0.13 ? 1 : 0), rowNormalY(it.row) + (0.5 - pr) * 0.3 * G.h, { s, h, yarn: Y[it.code || G.level.balls[it.ball].code], seed: 2, progress: pr });
+      if (pr > 0.01) ST.draw(ctx, colX(it.col) + Math.sin(u * 40) * 1.2 * (u > 0.13 ? 1 : 0), rowNormalY(it.row) + (0.5 - pr) * 0.3 * G.h, { s, h, yarn: P.yarn(P.yarnAt(it.code || G.level.balls[it.ball].code, gradT(it.row, it.col))), kind: kindAt(it.row, it.col), seed: 2, progress: pr });
     }
     // закрытие петель: кромка «бежит» справа налево, пока спицы выходят
-    if (v.item) { const k = clamp((G.now - v.item.t0 - 0.05) / 0.45, 0, 1); if (k > 0) drawEdge(ctx, rowNormalY(L.H - 1) + G.h * 0.05, Y[v.st[L.H - 1][0].code], G.fx, G.s, Math.ceil(k * L.W * 2)); }
+    if (v.item) { const k = clamp((G.now - v.item.t0 - 0.05) / 0.45, 0, 1); if (k > 0) drawEdge(ctx, rowNormalY(L.H - 1) + G.h * 0.05, P.yarn(v.st[L.H - 1][0].code), G.fx, G.s, Math.ceil(k * L.W * 2)); }
     // мерцание узора
     if (v.motifGlow) drawMotifGlow();
     if (G.sparkRow) drawRowSparkle();
@@ -618,9 +628,9 @@
     if (out < 1) {
       S.drawNeedle(ctx, lt[0] - Ln, G.yn + 16, lt[0], lt[1] + 1, nw);
       // головки на левой спице поверх неё
-      for (const hd of heads) if (hd.x > xb) ST.draw(ctx, hd.x, hd.y, { s, h, yarn: Y[hd.e.code], seed: hd.e.seed, stretch: hd.stretch, part: 'headFront' });
+      for (const hd of heads) if (hd.x > xb) ST.draw(ctx, hd.x, hd.y, { s, h, yarn: P.yarn(hd.e.code), seed: hd.e.seed, stretch: hd.stretch, part: 'headFront' });
       S.drawNeedle(ctx, rt[0] + Ln + out * 520, G.yn + 20, rt[0], rt[1] - 5, nw);
-      for (const hd of heads) if (hd.x <= xb) ST.draw(ctx, hd.x, hd.y, { s, h, yarn: Y[hd.e.code], seed: hd.e.seed, stretch: hd.stretch, part: 'headFront' });
+      for (const hd of heads) if (hd.x <= xb) ST.draw(ctx, hd.x, hd.y, { s, h, yarn: P.yarn(hd.e.code), seed: hd.e.seed, stretch: hd.stretch, part: 'headFront' });
     }
   }
   // наборный / закрытый край: косой жгут из наклонных «зёрен»
@@ -700,9 +710,10 @@
     const x = c.getContext('2d'); x.scale(G.dpr, G.dpr);
     const yOf = (r) => pad + h * 0.4 + (L.H - 1 - r) * h;
     for (let cc = 0; cc < L.W; cc++) ST.drawSprite(x, pad + (cc + 0.5) * s, yOf(-1) - h * 0.45, s, h, G.vis.cast[cc].code, G.vis.cast[cc].seed, G.dpr);
-    for (let r = 0; r < L.H; r++) for (let cc = 0; cc < L.W; cc++) { const e = G.vis.st[r][cc]; ST.drawSprite(x, pad + (cc + 0.5) * s, yOf(r), s, h, e.code, e.seed, G.dpr); }
+    for (let r = 0; r < L.H; r++) for (let cc = 0; cc < L.W; cc++) { const e = G.vis.st[r][cc]; ST.drawSprite(x, pad + (cc + 0.5) * s, yOf(r), s, h, e.code, e.seed, G.dpr, e.kind); }
+    for (let r = 0; r < L.H; r++) for (let cc = 0; cc < L.W; cc++) { const e = G.vis.st[r][cc]; if (e.kind === 'b') ST.drawBobble(x, pad + (cc + 0.5) * s, yOf(r) + 0.42 * h, 0.4 * s, P.yarn(e.code), 1, e.seed); }
     drawEdge(x, yOf(-1) + h * 0.55 + h * 1.12 - h, G.vis.castCode ? Y[G.vis.castCode] : Y.K, pad, s);
-    drawEdge(x, yOf(L.H - 1) + h * 0.05, Y[G.vis.st[L.H - 1][0].code], pad, s);
+    drawEdge(x, yOf(L.H - 1) + h * 0.05, P.yarn(G.vis.st[L.H - 1][0].code), pad, s);
     // бахрома для шарфа
     if (L.def.item === 'scarf') {
       const fr = Y[G.vis.castCode];

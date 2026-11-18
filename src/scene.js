@@ -162,7 +162,10 @@
         x.beginPath(); x.ellipse(0, 0, r * 0.98, r * wr.ky, 0, 0, Math.PI);
         x.strokeStyle = rgb(dark, 0.45); x.lineWidth = r * wr.w; x.stroke();
         x.beginPath(); x.ellipse(0, -r * 0.012, r * 0.98, r * wr.ky, 0, 0.15, Math.PI - 0.15);
-        x.strokeStyle = rgb(mix(base, light, 0.4 + wr.l * 0.5), 0.9); x.lineWidth = r * wr.w * 0.55; x.stroke();
+        let wc = mix(base, light, 0.4 + wr.l * 0.5);
+        if (Y.grad) { const g3 = Y.grad.map(hex); const t = wr.l * (g3.length - 1); const k0 = Math.min(g3.length - 2, Math.floor(t)); wc = mix(mix(g3[k0], g3[k0 + 1], t - k0), [255, 255, 255], 0.12); wc = mix(wc, [190, 178, 182], dim); }
+        if (Y.cFleck && i % 3 === 0) wc = mix(Y.cFleck, [190, 178, 182], dim);
+        x.strokeStyle = rgb(wc, 0.9); x.lineWidth = r * wr.w * (Y.grad ? 0.8 : 0.55); x.stroke();
         x.restore();
       }
       x.restore();
