@@ -11,13 +11,13 @@
   const G = (window.__G = {
     W: 390, H: 844, dpr: 1, st: 0, sb: 0, now: 0, paused: false, manual: 0,
     levelIdx: 0, level: null, vis: null, queue: [], gate: 0, active: [],
-    particles: new S.Particles(), banners: [], fps: [], lastTap: 0, firstTapDone: false,
+    particles: new S.Particles(), wfx: new S.Particles(), badges: { r: [], g: [] }, banners: [], fps: [], lastTap: 0, firstTapDone: false,
     wardrobeCount: 0, items: [], ward: null, wardrobeBump: new Spring(0, 260, 0.35), card: null, fade: 0, fadeT: null,
     deadEndAt: 0, deadEnd: false, hintBall: -1, wrongStreak: 0, stats: { taps: 0, wrong: 0 },
   });
   const LEVELS = qs.has('demo') && window.PETELKA_DEMO ? window.PETELKA_DEMO : window.PETELKA_LEVELS;
   const SAVE_KEY = qs.has('demo') ? 'petelka.demo' : 'petelka.m0';
-  const save = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ level: G.levelIdx, wardrobe: G.wardrobeCount, sound: A.enabled, items: G.items, gs: Object.assign({}, G.gs, { snap: undefined }) })); } catch (e) {} };
+  const save = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ level: G.levelIdx, wardrobe: G.wardrobeCount, sound: A.enabled, sfx: A.sfxOn, music: A.musicOn, vib: A.vibOn, items: G.items, badges: G.badges, gs: Object.assign({}, G.gs, { snap: undefined }) })); } catch (e) {} };
   // особая вещь: уровень и текст хранятся в data/x.js в закодированном виде
   const GIFT = (() => { try {
     const b = atob(window.PETELKA_X || ''); if (!b) return null;
@@ -112,7 +112,8 @@
   }
   // фактура: def.tex — ряды снизу вверх, по символу на петлю (k p b y / \\); по умолчанию лицевая
   const kindAt = (r, c) => { const t = G.tex; return t && t[r] && t[r][c] && t[r][c] !== '.' ? t[r][c] : 'k'; };
-  const gradT = (r, c) => { const L = G.level; return (r * L.W + (L.W - 1 - c)) / Math.max(1, L.W * L.H - 1); };
+  // секционная пряжа меняет цвет по рядам (не вдоль ряда) — иначе левый и правый край одного ряда разного оттенка
+  const gradT = (r, c) => { const L = G.level; return r / Math.max(1, L.H - 1); };
   const ballR = (i) => { const v = G.vis, L = G.level; const a = v.amounts[i], m = L.balls[i].max; return a <= 0 ? G.r0 * 0.5 : G.r0 * (0.62 + 0.38 * Math.sqrt(a / m)); };
   const colX = (c) => G.fx + (c + 0.5) * G.s;
   const rowNormalY = (r) => G.vis.Fy.v - r * G.h;
@@ -123,6 +124,7 @@
   function onTap(x, y) {
     A.unlock();
     if (!G.musicStarted && A.enabled) { G.musicStarted = true; A.startMusic(); }
+    if (G.menu) { menuTap(x, y); return; }
     if (G.note) { noteTap(); return; }
     if (G.ask) { askTap(x, y); return; }
     if (G.card) { const b = G.card.btn; if (G.card.shown > 0.6 && x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) nextLevel(); return; }
@@ -130,8 +132,8 @@
     if (G.vis.item) return;
     if (Math.hypot(x - (G.W - 34), y - (G.st + 36)) < 26) { openWard(); return; }
     if (giftTagOn() && Math.hypot(x - (G.W - 84), y - (G.st + 36)) < 22) { if (G.gs.done) openNote(); else startGift(); return; }
-    // звук
-    if (Math.hypot(x - 32, y - (G.st + 36)) < 24) { A.setEnabled(!A.enabled); if (A.enabled && !G.musicStarted) { G.musicStarted = true; A.startMusic(); } save(); return; }
+    // пауза / настройки
+    if (Math.hypot(x - 32, y - (G.st + 36)) < 24) { openMenu(); return; }
     // распустить
     const ub = unravelBtn(); if (x > ub.x - 6 && x < ub.x + ub.w + 6 && y > ub.y - 8 && y < ub.y + ub.h + 8) { doUnravel(); return; }
     // клубок
@@ -296,7 +298,7 @@
     const idle = G.now - G.lastTap; const busy = G.queue.length || G.active.length;
     G.hintOn = !busy && !G.level.done && G.hintBall >= 0 && (idle > (G.levelIdx === 0 ? 4 : 6) || G.wrongStreak >= 3);
     if (G.deadEndAt && G.now > G.deadEndAt) { G.deadEnd = true; G.deadEndAt = 0; }
-    G.particles.step(dt);
+    G.particles.step(dt); G.wfx.step(dt);
     G.wardrobeBump.step(dt);
     G.banners = G.banners.filter(b => G.now - b.t0 < b.life);
     if (v.item) stepItem(dt);
@@ -340,6 +342,7 @@
     if (G.ask) drawAsk();
     if (G.ward) drawWard();
     if (G.note) drawNote();
+    if (G.menu) drawMenu();
     if (G.fade > 0) { ctx.fillStyle = `rgba(255,244,246,${G.fade})`; ctx.fillRect(0, 0, W, H); }
   }
 
@@ -385,14 +388,10 @@
     ctx.restore();
     { const t = G.special ? `Для Н. · ${G.level.def.name}` : `${G.level.def.id}. ${G.level.def.name}`; text(t, W / 2, st + 70, fitSize(t, 15, 700, W - 24, 11), TH.textSoft, 'Nunito', 700); }
     if (giftTagOn()) drawGiftTag(W - 84, st + 36, 1);
-    // звук
+    // пауза / настройки (две «спицы»; если звук и музыка выключены — маленький перечёркнутый динамик не нужен, видно в меню)
     const sx = 32, sy = st + 36;
-    ctx.beginPath(); ctx.arc(sx, sy, 19, 0, 6.283); ctx.fillStyle = 'rgba(255,247,249,0.8)'; ctx.fill(); ctx.strokeStyle = 'rgba(232,180,196,0.6)'; ctx.stroke();
-    ctx.strokeStyle = '#B07488'; ctx.fillStyle = '#B07488'; ctx.lineWidth = 2; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(sx + 4, sy - 8); ctx.lineTo(sx + 4, sy + 4); ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(sx, sy + 5, 4.2, 3.2, -0.4, 0, 6.283); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(sx + 4, sy - 8); ctx.quadraticCurveTo(sx + 10, sy - 6, sx + 9, sy - 1); ctx.stroke();
-    if (!A.enabled) { ctx.strokeStyle = '#B07488'; ctx.beginPath(); ctx.moveTo(sx - 9, sy - 9); ctx.lineTo(sx + 10, sy + 10); ctx.stroke(); }
+    ctx.beginPath(); ctx.arc(sx, sy, 19, 0, 6.283); ctx.fillStyle = 'rgba(255,247,249,0.8)'; ctx.fill(); ctx.strokeStyle = 'rgba(232,180,196,0.6)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#B07488'; ctx.beginPath(); ctx.roundRect(sx - 6.5, sy - 8, 4.6, 16, 2.3); ctx.roundRect(sx + 1.9, sy - 8, 4.6, 16, 2.3); ctx.fill();
     // шкаф (вешалка)
     const wx = W - 34, wy = st + 36, bump = G.wardrobeBump.v;
     ctx.save(); ctx.translate(wx, wy); ctx.scale(1 + bump * 0.18, 1 + bump * 0.18);
@@ -474,7 +473,10 @@
         ctx.beginPath(); ctx.roundRect(x - s * 0.44, y + 4, s * 0.88, h - 8, 10); ctx.strokeStyle = `rgba(232,120,140,${1 - t})`; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
       }
       ctx.save(); ctx.globalAlpha = knitted ? 0.28 : 1;
-      if (cell.any) {
+      const fz = !knitted && L.forced ? L.forced(r, c) : null; // зеркальная пара уже связана — цвет закреплён
+      if (fz) {
+        ST.draw(ctx, x, cy - ph * 0.55, { s: ps, h: ph, yarn: Y[fz], seed: 1, progress: 1, part: 'legs', kind: kindAt(r, c) });
+      } else if (cell.any) {
         ctx.setLineDash([2.5, 3]); ctx.strokeStyle = 'rgba(176,116,136,0.7)'; ctx.lineWidth = 1.4;
         ctx.beginPath(); ctx.moveTo(x - s * 0.18, cy - 9); ctx.quadraticCurveTo(x - s * 0.16, cy + 4, x, cy + 10); ctx.quadraticCurveTo(x + s * 0.16, cy + 4, x + s * 0.18, cy - 9); ctx.stroke();
         ctx.setLineDash([]); text('?', x, cy - 1, 13, 'rgba(160,100,120,0.9)', 'Nunito', 800);
@@ -701,8 +703,10 @@
   function renderDef(def, s, dpr, codes) {
     const rows = def.rows.map(r => r.trim().split(/\s+/)); const tex = def.tex ? def.tex.map(r => r.trim().split(/\s+/)) : null;
     const first = def.balls[0].color; const idx = LEVELS.indexOf(def);
-    const getE = (r, c) => { const t = rows[r][c]; if (t === '-') return null; let code = codes ? codes[r][c] : (t === '?' ? first : t.split('/')[0]);
-      code = P.yarnAt(code, (r * def.width + (def.width - 1 - c)) / Math.max(1, def.width * def.height - 1));
+    const cells = new P.Level(def).cells; // зеркальные пары «?»/«или-или»: левая повторяет правую (и в старых сохранениях)
+    const getE = (r, c) => { const t = rows[r][c]; if (t === '-') return null; const m = cells[r][c].mate;
+      let code = codes ? codes[r][m != null ? m : c] : (t === '?' ? first : t.split('/')[0]);
+      code = P.yarnAt(code, r / Math.max(1, def.height - 1));
       return { code, kind: tex && tex[r][c] !== '.' ? tex[r][c] : 'k', seed: 1 + ((r * 7 + c * 13 + idx * 5) % 4) }; };
     const castCode = def.balls.some(b => b.color === 'K') ? 'K' : def.balls[0].color;
     return P.Items.render(def, getE, castCode, s, s * 0.78, dpr);
@@ -731,6 +735,7 @@
       if (!G.special) { const L = G.level; const codes = G.vis.st.map(row => row.map(e => e ? e.code.split('@')[0] : null));
         G.items = G.items.filter(x => x.lv !== L.def.id); G.items.push({ lv: L.def.id, item: L.def.item, cw: L.def.cw, codes }); }
       G.particles.burst(G.W - 34, G.st + 36, 18, { col: [255, 236, 242], speed: 70, life: 0.9, r: 2, g: 30, star: true });
+      if (!G.special) { const nb = newBadges(); if (nb.length) setTimeout(() => { for (const b of nb) banner(b.t, 2.6); A.cheer(); G.wardrobeBump.vel = 14; G.particles.burst(G.W - 34, G.st + 36, 30, { col: [255, 226, 160], speed: 90, life: 1.1, r: 2.4, g: 20, star: true }); }, 900); }
       save();
     }
     if (t > 2.35 && !G.card && !G.note && !G.ask && !it.noted) { it.noted = true; if (G.special) openNote(); else openCard(it.snap); }   // один раз: иначе карточка вставала заново под вопросом о подарке
@@ -778,8 +783,102 @@
     const s = size, R = renderDef(def, s, G.dpr, codes ? codes.map(r => r.map(x => x || 'K')) : null);
     c = R.full; c._w = R.w; c._h = R.h; thumbCache.set(key, c); return c;
   }
-  function openWard() { A.unlock(); G.ward = { shown: 0, scroll: 0, vel: 0, drag: null, contentH: 0, viewH: 0 }; }
-  function wardTap(x, y) { const w = G.ward; if (!w || w.shown < 0.5) return; if (Math.hypot(x - w.cx, y - w.cy) < 26 || y < w.y0 - 6 || y > w.y1 + 6) w.closing = true; }
+  // коллекции: ленточка — у вещи собраны все расцветки; гирлянда — на полке есть все вещи
+  const cwGot = (id) => new Set(G.items.filter(x => x.item === id).map(x => x.cw));
+  const fullItem = (it) => { const g = cwGot(it.id); return it.cw.every(c => g.has(c)); };
+  const fullShelf = (sh) => { const its = CAT.items.filter(i => i.shelf === sh.id); return its.length > 0 && its.every(i => G.items.some(x => x.item === i.id)); };
+  // новые награды, о которых ещё не объявляли (объявление — сразу после вещи; «праздник» в шкафу — при первом показе)
+  function newBadges() {
+    const out = []; G.announced = G.announced || new Set();
+    for (const it of CAT.items) if (fullItem(it) && !G.badges.r.includes(it.id) && !G.announced.has('r:' + it.id)) { G.announced.add('r:' + it.id); out.push({ t: `Золотая ленточка: ${it.name}` }); }
+    for (const sh of CAT.shelves) if (fullShelf(sh) && !G.badges.g.includes(sh.id) && !G.announced.has('g:' + sh.id)) { G.announced.add('g:' + sh.id); out.push({ t: `Гирлянда над полкой «${sh.name}»` }); }
+    return out;
+  }
+  function openWard() { A.unlock(); G.ward = { shown: 0, scroll: 0, vel: 0, drag: null, contentH: 0, viewH: 0, hits: [], t0: G.now, cel: {} }; }
+  function wardTap(x, y) {
+    const w = G.ward; if (!w || w.shown < 0.5) return;
+    if (w.view) { viewTap(x, y); return; }
+    if (Math.hypot(x - w.cx, y - w.cy) < 26 || y < w.y0 - 6 || y > w.y1 + 6) { w.closing = true; return; }
+    for (const h of w.hits) if (x > h.x && x < h.x + h.w && y > h.y && y < h.y + h.h) {
+      if (h.gift) { w.closing = true; setTimeout(() => { if (!G.note) openNote(); }, 220); return; }
+      const it = h.it, mine = G.items.filter(q => q.item === it.id), last = mine[mine.length - 1];
+      w.view = { it, i: Math.max(0, last ? it.cw.indexOf(last.cw) : 0), t0: G.now, dx: 0, from: [h.x + h.w / 2, h.y + h.h / 2] }; A.slide && A.slide(); return;
+    }
+  }
+  function viewBox() { const w = Math.min(360, G.W - 28), h = Math.min(560, G.H - G.st - G.sb - 60); return { x: (G.W - w) / 2, y: G.st + Math.max(24, (G.H - G.st - G.sb - h) / 2), w, h }; }
+  function viewStep(d) { const v = G.ward && G.ward.view; if (!v) return; const n = v.it.cw.length; v.i = (v.i + d + n) % n; v.ts = G.now; v.dir = d; A.click && A.click(1.1); }
+  function viewTap(x, y) {
+    const v = G.ward.view, b = viewBox(); if (G.now - v.t0 < 0.2) return;
+    if (x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h || Math.hypot(x - (b.x + b.w - 28), y - (b.y + 28)) < 24) { v.closing = G.now; return; }
+    const ay = b.y + b.h * 0.47; if (Math.abs(y - ay) < 60) { if (x < b.x + 56) { viewStep(-1); return; } if (x > b.x + b.w - 56) { viewStep(1); return; } }
+    // точки расцветок
+    const n = v.it.cw.length, dy = b.y + b.h - 92, sp = Math.min(26, (b.w - 60) / n);
+    if (Math.abs(y - dy) < 18) for (let q = 0; q < n; q++) { const dx = b.x + b.w / 2 + (q - (n - 1) / 2) * sp; if (Math.abs(x - dx) < sp / 2) { if (q !== v.i) { v.dir = q > v.i ? 1 : -1; v.i = q; v.ts = G.now; } return; } }
+  }
+  let giftThumb = null;   // миниатюра подарка для шкафа (не в сохранение)
+  function drawRibbon(x, y, sz, k) {   // золотая ленточка-бантик в углу карточки
+    if (k <= 0) return; ctx.save(); ctx.translate(x, y); const sc = (0.4 + 0.6 * E.outBack(Math.min(1, k))) * sz / 22; ctx.scale(sc, sc); ctx.rotate(-0.15 + (1 - Math.min(1, k)) * 0.6);
+    ctx.shadowColor = 'rgba(150,100,40,0.35)'; ctx.shadowBlur = 4; ctx.shadowOffsetY = 1.5;
+    const g = ctx.createLinearGradient(-10, -10, 10, 12); g.addColorStop(0, '#FFE7A8'); g.addColorStop(0.5, '#F2C25E'); g.addColorStop(1, '#D9A441');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(-2, 2); ctx.lineTo(-8, 15); ctx.lineTo(-4, 13); ctx.lineTo(-2, 17); ctx.lineTo(1, 3); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(2, 2); ctx.lineTo(9, 14); ctx.lineTo(5, 13); ctx.lineTo(4, 17); ctx.lineTo(-1, 3); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-6, -1, 7, 4.6, -0.35, 0, 6.283); ctx.fill(); ctx.beginPath(); ctx.ellipse(6, -1, 7, 4.6, 0.35, 0, 6.283); ctx.fill();
+    ctx.shadowColor = 'transparent'; ctx.fillStyle = '#E5B04E'; ctx.beginPath(); ctx.arc(0, 0, 3.4, 0, 6.283); ctx.fill();
+    ctx.fillStyle = 'rgba(255,250,225,0.7)'; ctx.beginPath(); ctx.ellipse(-7, -2.5, 3, 1.4, -0.4, 0, 6.283); ctx.ellipse(7, -2.5, 3, 1.4, 0.4, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+  function drawGarland(x0, x1, y, k) { // гирлянда-флажки над полкой; k — проявление (0…1), флажки выпадают по очереди
+    if (k <= 0) return; const n = Math.max(5, Math.round((x1 - x0) / 30)), sag = 9, cols = ['#F7B9CA', '#FBE3A6', '#BFE3D4', '#D8CCF0', '#F9C9B0'];
+    const at = (t) => [x0 + (x1 - x0) * t, y + sag * 4 * t * (1 - t)];
+    ctx.save(); ctx.globalAlpha *= Math.min(1, k * 3); ctx.strokeStyle = 'rgba(176,116,136,0.7)'; ctx.lineWidth = 1.2; ctx.beginPath();
+    for (let i = 0; i <= 24; i++) { const [px, py] = at(i / 24); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.stroke(); ctx.restore();
+    for (let i = 0; i < n; i++) { const t = (i + 0.5) / n, kk = clamp(k * (n + 3) / 3 - i * 0.35, 0, 1); if (kk <= 0) continue;
+      const [px, py] = at(t), sw = Math.sin(G.now * 1.6 + i) * 0.08; ctx.save(); ctx.translate(px, py); ctx.rotate(sw); ctx.scale(1, E.outBack(kk));
+      ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(6, 0); ctx.lineTo(0, 11); ctx.closePath(); ctx.fillStyle = cols[i % cols.length]; ctx.fill(); ctx.strokeStyle = 'rgba(176,116,136,0.35)'; ctx.lineWidth = 0.8; ctx.stroke(); ctx.restore(); }
+  }
+  function drawLock(x, y, sc) { ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc); ctx.strokeStyle = 'rgba(176,116,136,0.75)'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.arc(0, -5, 5.5, Math.PI, 0); ctx.lineTo(5.5, 0); ctx.moveTo(-5.5, -5); ctx.lineTo(-5.5, 0); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(-8, -1, 16, 12, 3); ctx.fillStyle = 'rgba(214,160,178,0.9)'; ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 4.5, 1.8, 0, 6.283); ctx.fill(); ctx.restore(); }
+  function drawView() {
+    const w = G.ward, v = w.view, b = viewBox();
+    const kin = E.outCubic(clamp((G.now - v.t0) / 0.3, 0, 1)), kout = v.closing ? clamp((G.now - v.closing) / 0.2, 0, 1) : 0;
+    if (kout >= 1) { w.view = null; return; }
+    const k = kin * (1 - kout), it = v.it, cw = it.cw[v.i], got = cwGot(it.id), has = got.has(cw);
+    ctx.fillStyle = `rgba(110,60,80,${0.28 * k})`; ctx.fillRect(0, 0, G.W, G.H);
+    ctx.save(); ctx.globalAlpha = k; const sc0 = 0.85 + 0.15 * k; ctx.translate(G.W / 2, b.y + b.h / 2); ctx.scale(sc0, sc0); ctx.translate(-G.W / 2, -(b.y + b.h / 2));
+    panel(b.x, b.y, b.w, b.h, 26, true);
+    ctx.strokeStyle = '#B07488'; ctx.lineWidth = 2; ctx.lineCap = 'round'; const cx = b.x + b.w - 28, cy = b.y + 28; ctx.beginPath(); ctx.moveTo(cx - 7, cy - 7); ctx.lineTo(cx + 7, cy + 7); ctx.moveTo(cx + 7, cy - 7); ctx.lineTo(cx - 7, cy + 7); ctx.stroke();
+    text(it.name, G.W / 2, b.y + 40, fitSize(it.name, 30, 400, b.w - 100, 18) , '#A0607A', 'Marck', 400);
+    const cwn = (CAT.colorways && CAT.colorways[cw]) || cw;
+    text(has ? `расцветка «${cwn}»` : `расцветка «${cwn}» — ещё не связана`, G.W / 2, b.y + 70, fitSize('расцветка «' + cwn + '» — ещё не связана', 13.5, 700, b.w - 40, 10), has ? TH.text : TH.textSoft, 'Nunito', 700);
+    // крупно: связанная — как связала игрок (её цвета петель), несвязанная — бледный силуэт и замок
+    const mine = G.items.filter(q => q.item === it.id && q.cw === cw), last = mine[mine.length - 1];
+    const def = last ? LEVELS.find(l => l.id === last.lv) : (LEVELS.find(l => l.item === it.id && l.cw === cw) || LEVELS.find(l => l.item === it.id));
+    const ax = b.y + 96, ah = b.h - 96 - 120, aw = b.w - 110;
+    if (def) {
+      const c = thumb(def, last ? last.codes : null, 20); const scl = Math.min(aw / c._w, ah / c._h);
+      const ts = v.ts != null ? clamp((G.now - v.ts) / 0.28, 0, 1) : 1, off = (1 - E.outCubic(ts)) * 40 * (v.dir || 0) - (v.dx || 0) * -0.35;
+      ctx.save(); ctx.globalAlpha = k * (0.35 + 0.65 * ts);
+      if (!has) { ctx.globalAlpha *= 0.22; ctx.filter = 'grayscale(1)'; } else { ctx.shadowColor = 'rgba(120,60,80,0.25)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 6; }
+      ctx.drawImage(c, G.W / 2 - c._w * scl / 2 + off + (v.dx || 0) * 0.35, ax + ah / 2 - c._h * scl / 2, c._w * scl, c._h * scl); ctx.restore();
+      if (!has) drawLock(G.W / 2, ax + ah / 2, 2.2);
+      if (has && mine.length) text(`связано: ${mine.length === 1 ? 'один раз' : mine.length + ' раза'}`, G.W / 2, ax + ah + 14, 12, TH.textSoft, 'Nunito', 700);
+    }
+    // стрелки
+    const ay = b.y + b.h * 0.47; ctx.strokeStyle = 'rgba(176,116,136,0.8)'; ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const d of [-1, 1]) { const x = d < 0 ? b.x + 28 : b.x + b.w - 28; ctx.beginPath(); ctx.arc(x, ay, 17, 0, 6.283); ctx.fillStyle = 'rgba(252,232,238,0.9)'; ctx.fill(); ctx.beginPath(); ctx.moveTo(x + 3 * d * -1 + d * -1, ay - 7); ctx.lineTo(x + 4 * d, ay); ctx.lineTo(x + 3 * d * -1 + d * -1, ay + 7); ctx.stroke(); }
+    // точки-расцветки: заполненные — связаны
+    const n = it.cw.length, dy = b.y + b.h - 92, sp = Math.min(26, (b.w - 60) / n);
+    for (let q = 0; q < n; q++) { const dx = b.x + b.w / 2 + (q - (n - 1) / 2) * sp, g2 = got.has(it.cw[q]);
+      ctx.beginPath(); ctx.arc(dx, dy, q === v.i ? 7 : 5, 0, 6.283); ctx.fillStyle = g2 ? '#EE9BB2' : 'rgba(200,150,168,0.25)'; ctx.fill();
+      if (q === v.i) { ctx.strokeStyle = '#B07488'; ctx.lineWidth = 1.5; ctx.stroke(); } }
+    const full = fullItem(it);
+    text(full ? 'все расцветки связаны' : `связано ${it.cw.filter(c => got.has(c)).length} из ${n} расцветок`, G.W / 2, dy + 26, 13, full ? '#C7953A' : TH.textSoft, 'Nunito', 800);
+    if (full) drawRibbon(b.x + b.w / 2 + Math.min(110, ctx.measureText('все расцветки связаны').width / 2 + 22), dy + 24, 20, 1);
+    text('листай влево-вправо', G.W / 2, b.y + b.h - 28, 11.5, 'rgba(160,110,128,0.6)', 'Nunito', 700);
+    ctx.restore();
+  }
+
   function drawWard() {
     const w = G.ward, k = E.outCubic(w.shown);
     ctx.fillStyle = `rgba(110,60,80,${0.25 * k})`; ctx.fillRect(0, 0, G.W, G.H);
@@ -792,17 +891,38 @@
     text(`${gotItems} из ${total} вещей · ${gotCw} из ${allCw} расцветок`, G.W / 2, y0 + 60, 13, TH.textSoft, 'Nunito', 700);
     // крестик
     ctx.strokeStyle = '#B07488'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(w.cx - 7, w.cy - 7); ctx.lineTo(w.cx + 7, w.cy + 7); ctx.moveTo(w.cx + 7, w.cy - 7); ctx.lineTo(w.cx - 7, w.cy + 7); ctx.stroke();
-    const vy = y0 + 78, vh = ph - 90; w.viewH = vh;
+    const vy = y0 + 78, vh = ph - 90; w.viewH = vh; w.hits = [];
     ctx.save(); ctx.beginPath(); ctx.rect(x0, vy, pw, vh); ctx.clip();
     let y = vy - w.scroll; const slot = (pw - 24) / 4;
+    const vis = (yy, hh) => yy + hh > vy && yy < vy + vh;
+    // праздник: награды, которые ещё не показывали в шкафу, проявляются по очереди (и шкаф сам прокручивается к первой)
+    const cel = w.cel, celT = (key) => { if (cel[key] == null) { cel[key] = Math.max(G.now + 0.5, w.celNext || 0); w.celNext = cel[key] + 1.1; } return clamp((G.now - cel[key]) / 0.7, 0, 1); };
+    const celebrate = (key, kind, id, px, py) => { const t = celT(key); if (t >= 1 && !cel[key + '!']) { cel[key + '!'] = 1; if (kind === 'r') G.badges.r.push(id); else G.badges.g.push(id); save(); } if (t > 0 && !cel[key + '*']) { cel[key + '*'] = 1; A.cheer(); G.wfx.burst(px, py, 26, { col: [255, 222, 150], speed: 80, life: 1.0, r: 2.3, g: 25, star: true }); } return t; };
+    // подарочный свитер «Для Н.» — по тапу снова открывается записка
+    if (G.gs.done && GIFT) {
+      const gh = 112; text('Для Н.', x0 + 22, y + 16, 22, '#A0607A', 'Marck', 400, 'left');
+      const bx = x0 + 16, by = y + 30, bw = pw - 32; if (vis(by, gh)) {
+        ctx.beginPath(); ctx.roundRect(bx, by, bw, gh - 12, 16); ctx.fillStyle = 'rgba(255,240,245,0.9)'; ctx.fill(); ctx.strokeStyle = 'rgba(236,150,176,0.55)'; ctx.lineWidth = 1.2; ctx.stroke();
+        const sn = (G.gs.snap instanceof HTMLCanvasElement && G.gs.snap) || (giftThumb = giftThumb || (() => { const cd = codesFit(GIFT.lv, G.gs.codes) ? G.gs.codes.map(r => r.map(x => x || 'K')) : null; const R = renderDef(GIFT.lv, 10, G.dpr, cd); const c = R.full; c._w = R.w; c._h = R.h; return c; })());
+        const sc = Math.min(84 / sn._w, (gh - 24) / sn._h); ctx.drawImage(sn, bx + 14, by + (gh - 12) / 2 - sn._h * sc / 2, sn._w * sc, sn._h * sc);
+        text('Свитер с сердцем', bx + 112, by + 36, 15, TH.text, 'Nunito', 800, 'left');
+        text('нажми — перечитать записку', bx + 112, by + 58, fitSize('нажми — перечитать записку', 12.5, 700, bw - 124, 10), TH.textSoft, 'Nunito', 700, 'left');
+        w.hits.push({ x: bx, y: Math.max(by, vy), w: bw, h: Math.min(by + gh - 12, vy + vh) - Math.max(by, vy), gift: true });
+      }
+      y += 30 + gh;
+    }
     for (const sh of CAT.shelves) {
       const its = CAT.items.filter(i => i.shelf === sh.id); if (!its.length) continue;
       const got = its.filter(i => G.items.some(x => x.item === i.id)).length;
+      if (fullShelf(sh)) { const seen = G.badges.g.includes(sh.id); const kk = seen ? 1 : celebrate('g:' + sh.id, 'g', sh.id, G.W / 2, y + 4);
+        if (!seen && w.autoTo == null) w.autoTo = y + w.scroll - vy - 10;
+        drawGarland(x0 + 120, x0 + pw - 60, y + 2, kk); }
       text(sh.name, x0 + 22, y + 14, 15, TH.text, 'Nunito', 800, 'left');
       text(`${got}/${its.length}`, x0 + pw - 22, y + 14, 13, TH.textSoft, 'Nunito', 700, 'right');
       const rowsN = Math.ceil(its.length / 4);
       its.forEach((it, j) => {
         const sx = x0 + 12 + (j % 4) * slot, sy = y + 28 + Math.floor(j / 4) * (slot + 24);
+        if (w.autoTo == null && fullItem(it) && !G.badges.r.includes(it.id)) w.autoTo = sy + w.scroll - vy - 40;
         if (sy > vy + vh || sy + slot + 24 < vy) return;
         ctx.beginPath(); ctx.roundRect(sx + 4, sy, slot - 8, slot, 14); ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fill(); ctx.strokeStyle = 'rgba(232,180,196,0.45)'; ctx.lineWidth = 1; ctx.stroke();
         const mine = G.items.filter(x => x.item === it.id); const last = mine[mine.length - 1];
@@ -814,6 +934,11 @@
         }
         const ncw = new Set(mine.map(x => x.cw)).size;
         wardLabel(it.name, sx + slot / 2, sy + slot, slot - 4, last ? TH.text : 'rgba(160,110,128,0.55)');
+        if (vis(sy, slot + 20)) w.hits.push({ x: sx + 4, y: Math.max(sy, vy), w: slot - 8, h: Math.min(sy + slot + 20, vy + vh) - Math.max(sy, vy), it });
+        if (fullItem(it)) { const seen = G.badges.r.includes(it.id); const kk = seen ? 1 : celebrate('r:' + it.id, 'r', it.id, sx + slot - 14, sy + 12);
+          if (!seen && w.autoTo == null) w.autoTo = sy + w.scroll - vy - 40;
+          if (kk < 1 && kk > 0) { ctx.save(); ctx.globalAlpha = 0.5 * Math.sin(kk * Math.PI); ctx.beginPath(); ctx.roundRect(sx + 4, sy, slot - 8, slot, 14); ctx.strokeStyle = '#F2C25E'; ctx.lineWidth = 3; ctx.stroke(); ctx.restore(); }
+          drawRibbon(sx + slot - 16, sy + 12, 17, kk); }
         // бусинки коллекции расцветок
         const n = it.cw.length, bw = 7; for (let q = 0; q < n; q++) { const bx = sx + slot / 2 + (q - (n - 1) / 2) * bw, by = sy + slot - 9; ctx.beginPath(); ctx.arc(bx, by, 2.3, 0, 6.283); ctx.fillStyle = q < ncw ? '#EE9BB2' : 'rgba(200,150,168,0.3)'; ctx.fill(); }
       });
@@ -821,6 +946,9 @@
     }
     w.contentH = y + w.scroll - vy;
     ctx.restore(); ctx.restore();
+    if (w.autoTo != null && !w.autoDone && !w.drag) { w.autoDone = true; w.scroll = clamp(w.autoTo, 0, Math.max(0, w.contentH - w.viewH)); }
+    G.wfx.draw(ctx);
+    if (w.view) drawView();
   }
   function openCard(snap) {
     const L = G.level; const last = G.levelIdx >= LEVELS.length - 1;
@@ -892,6 +1020,57 @@
     text('позже', G.W / 2, b.later.y + b.later.h / 2, 13.5, TH.textSoft, 'Nunito', 700);
     ctx.restore();
   }
+  // ---------- пауза и настройки ----------
+  function menuBox() {
+    const vib = A.canVibrate, w = Math.min(330, G.W - 36), rows = vib ? 3 : 2, h = 190 + rows * 58 + (vib ? 0 : 28);
+    const x = (G.W - w) / 2, y = Math.max(G.st + 96, (G.H - h) / 2 - 30);
+    const list = [{ id: 'music', t: 'Музыка', sub: 'спокойное пианино' }, { id: 'sfx', t: 'Звуки', sub: 'щелчки спиц, колокольчики' }];
+    if (vib) list.push({ id: 'vib', t: 'Вибрация', sub: 'лёгкий отклик на петлю' });
+    const R = list.map((o, i) => Object.assign(o, { x: x + 18, y: y + 96 + i * 58, w: w - 36, h: 50 }));
+    const btn = { x: x + w / 2 - 105, y: y + h - 70, w: 210, h: 50 };
+    return { x, y, w, h, rows: R, btn, vib };
+  }
+  function openMenu() { if (G.menu) return; G.menu = { t0: G.now, close: 0 }; A.slide && A.slide(); }
+  function closeMenu() { if (G.menu && !G.menu.close) G.menu.close = G.now; }
+  const menuVal = (id) => id === 'music' ? A.musicOn : id === 'sfx' ? A.sfxOn : A.vibOn;
+  function menuTap(x, y) {
+    const m = G.menu; if (!m || m.close || G.now - m.t0 < 0.2) return; const b = menuBox();
+    for (const r of b.rows) if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) {
+      const v = !menuVal(r.id); m['t_' + r.id] = G.now;
+      if (r.id === 'music') { A.setMusic(v); if (v) { G.musicStarted = true; A.startMusic(); } }
+      else if (r.id === 'sfx') { A.setSfx(v); if (v) A.bell(3, 0.07); }
+      else { A.setVibrate(v); if (v) A.vibrate(18); }
+      save(); return;
+    }
+    const o = b.btn; if ((x > o.x && x < o.x + o.w && y > o.y && y < o.y + o.h) || x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) closeMenu();
+  }
+  function drawMenu() {
+    const m = G.menu, kin = E.outCubic(clamp((G.now - m.t0) / 0.28, 0, 1)), kout = m.close ? clamp((G.now - m.close) / 0.22, 0, 1) : 0;
+    if (kout >= 1) { G.menu = null; return; }
+    const k = kin * (1 - kout), b = menuBox();
+    ctx.fillStyle = `rgba(110,60,80,${0.32 * k})`; ctx.fillRect(0, 0, G.W, G.H);
+    ctx.save(); ctx.globalAlpha = k; ctx.translate(0, (1 - k) * 24);
+    panel(b.x, b.y, b.w, b.h, 26, true);
+    text('Пауза', G.W / 2, b.y + 44, 34, '#9A5F73', 'Marck', 400);
+    text('вязание подождёт', G.W / 2, b.y + 74, 13, TH.textSoft, 'Nunito', 700);
+    for (const r of b.rows) {
+      const on = menuVal(r.id), ta = m['t_' + r.id] != null ? clamp((G.now - m['t_' + r.id]) / 0.18, 0, 1) : 1, pos = on ? E.outCubic(ta) : 1 - E.outCubic(ta);
+      ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 16); ctx.fillStyle = 'rgba(252,232,238,0.7)'; ctx.fill();
+      text(r.t, r.x + 16, r.y + 18, 16, TH.text, 'Nunito', 800, 'left');
+      text(r.sub, r.x + 16, r.y + 36, fitSize(r.sub, 11.5, 700, r.w - 100, 9.5), TH.textSoft, 'Nunito', 700, 'left');
+      const tw = 52, th = 30, tx = r.x + r.w - tw - 12, ty = r.y + (r.h - th) / 2;
+      const c0 = [232, 214, 220], c1 = [236, 151, 174], cc = c0.map((v, i) => Math.round(v + (c1[i] - v) * pos));
+      ctx.beginPath(); ctx.roundRect(tx, ty, tw, th, th / 2); ctx.fillStyle = `rgb(${cc.join(',')})`; ctx.fill();
+      ctx.save(); ctx.shadowColor = 'rgba(120,60,80,0.3)'; ctx.shadowBlur = 4; ctx.shadowOffsetY = 1.5;
+      ctx.beginPath(); ctx.arc(tx + th / 2 + (tw - th) * pos, ty + th / 2, th / 2 - 3, 0, 6.283); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
+    }
+    if (!b.vib) text('вибрация на этом устройстве недоступна', G.W / 2, b.btn.y - 18, 11.5, TH.textSoft, 'Nunito', 700);
+    const o = b.btn; ctx.save(); ctx.shadowColor = 'rgba(220,120,150,0.35)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 4;
+    const g = ctx.createLinearGradient(0, o.y, 0, o.y + o.h); g.addColorStop(0, '#F7B9CA'); g.addColorStop(1, '#EC97AE');
+    ctx.beginPath(); ctx.roundRect(o.x, o.y, o.w, o.h, 25); ctx.fillStyle = g; ctx.fill(); ctx.restore();
+    text('Продолжить', G.W / 2, o.y + o.h / 2 + 1, 19, '#fff', 'Nunito', 800);
+    ctx.restore();
+  }
   function startGift() {
     if (!GIFT) return; const resume = G.ask ? G.ask.resume : G.card ? G.levelIdx + 1 : G.levelIdx; G.ask = null; G.gs.open = true; const nxt = clamp(resume, 0, LEVELS.length - 1);
     G.fadeT = 0; G.fadeSwapped = false; G.fadeSwap = () => { G.card = null; startLevel(nxt, GIFT.lv); banner('Для Н.', 2.2); };
@@ -952,9 +1131,11 @@
   }
 
   // ---------- запуск ----------
-  cv.addEventListener('pointerdown', (e) => { e.preventDefault(); if (G.ward && !G.ward.closing) { G.ward.drag = { y: e.clientY, s: G.ward.scroll, t: performance.now(), moved: false, ly: e.clientY }; return; } onTap(e.clientX, e.clientY); }, { passive: false });
-  cv.addEventListener('pointermove', (e) => { const w = G.ward; if (!w || !w.drag) return; const d = e.clientY - w.drag.y; if (Math.abs(d) > 6) w.drag.moved = true; w.scroll = w.drag.s - d; const now = performance.now(); w.vel = -(e.clientY - w.drag.ly) / Math.max(0.008, (now - w.drag.t) / 1000); w.drag.t = now; w.drag.ly = e.clientY; });
-  cv.addEventListener('pointerup', (e) => { const w = G.ward; if (!w || !w.drag) return; const moved = w.drag.moved; w.drag = null; if (!moved) { w.vel = 0; onTap(e.clientX, e.clientY); } });
+  cv.addEventListener('pointerdown', (e) => { e.preventDefault(); if (G.ward && !G.ward.closing) { G.ward.drag = { x: e.clientX, y: e.clientY, s: G.ward.scroll, t: performance.now(), moved: false, ly: e.clientY }; return; } onTap(e.clientX, e.clientY); }, { passive: false });
+  cv.addEventListener('pointermove', (e) => { const w = G.ward; if (!w || !w.drag) return; const d = e.clientY - w.drag.y; if (Math.abs(d) > 6 || Math.abs(e.clientX - w.drag.x) > 6) w.drag.moved = true; if (w.view) { w.view.dx = e.clientX - w.drag.x; return; } w.scroll = w.drag.s - d; const now = performance.now(); w.vel = -(e.clientY - w.drag.ly) / Math.max(0.008, (now - w.drag.t) / 1000); w.drag.t = now; w.drag.ly = e.clientY; });
+  cv.addEventListener('pointerup', (e) => { const w = G.ward; if (!w || !w.drag) return; const moved = w.drag.moved, dx = e.clientX - w.drag.x; w.drag = null;
+    if (w.view) { w.view.dx = 0; if (moved && Math.abs(dx) > 36) { viewStep(dx < 0 ? 1 : -1); return; } if (!moved) onTap(e.clientX, e.clientY); return; }
+    if (!moved) { w.vel = 0; onTap(e.clientX, e.clientY); } });
   cv.addEventListener('wheel', (e) => { if (G.ward) { G.ward.scroll += e.deltaY; } }, { passive: true });
   document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
   // iOS (PWA с экрана «Домой»): размеры окна и safe-area устанавливаются не сразу — пересчитываем при любом изменении
@@ -969,8 +1150,11 @@
   if (window.visualViewport) window.visualViewport.addEventListener('resize', () => checkViewport());
   [50, 250, 700, 1500, 3000].forEach(ms => setTimeout(() => checkViewport(), ms));
   const saved = load();
-  if (saved && saved.sound === false) A.setEnabled(false);
-  if (saved) { G.wardrobeCount = saved.wardrobe || 0; G.items = Array.isArray(saved.items) ? saved.items : []; if (saved.gs) G.gs = Object.assign(G.gs, saved.gs); }
+  // звук: v3.3 — музыка, щелчки и вибрация отдельно; старые сохранения знали только общий «звук»
+  if (saved && ('sfx' in saved || 'music' in saved)) A.configure({ sfx: saved.sfx !== false, music: saved.music !== false, vib: saved.vib !== false });
+  else if (saved && saved.sound === false) A.setEnabled(false);
+  if (saved) { G.wardrobeCount = saved.wardrobe || 0; G.items = Array.isArray(saved.items) ? saved.items : []; if (saved.gs) G.gs = Object.assign(G.gs, saved.gs);
+    const bd = saved.badges; if (bd && Array.isArray(bd.r) && Array.isArray(bd.g)) G.badges = { r: bd.r.filter(x => typeof x === 'string'), g: bd.g.filter(x => typeof x === 'string') }; }
   // миграция прогресса со старых версий: вещь ссылается на уровень, где теперь другая вещь/размер — перепривязать, цвета петель сбросить
   G.items = G.items.filter(x => x && x.item && CAT.items.some(i => i.id === x.item)).map(x => {
     let def = LEVELS.find(l => l.id === x.lv);
@@ -985,6 +1169,8 @@
   const fontsReady = (document.fonts && document.fonts.load) ? Promise.all([document.fonts.load('400 30px "Marck Script"', 'Петелька'), document.fonts.load('700 14px Nunito', 'Ряд')]) : Promise.resolve();
   fontsReady.catch(() => {}).then(() => { G.fontsReady = true; checkViewport(true); });
   requestAnimationFrame((t) => { lastT = t; checkViewport(); requestAnimationFrame(frame); });
+  // заставка уходит, когда игра уже нарисовала пару кадров (фон, поле, шрифты)
+  { const sp = document.getElementById('splash'); if (sp) { const off = () => { sp.classList.add('off'); setTimeout(() => sp.remove(), 600); }; const go = () => setTimeout(off, 220); (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(() => requestAnimationFrame(() => requestAnimationFrame(go))); setTimeout(off, 2500); } }
   if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !qs.has('nosw')) navigator.serviceWorker.register('sw.js').catch(() => {});
 
   // ---------- отладочные хуки ----------
@@ -994,7 +1180,7 @@
     ballPos: () => G.ballPos.map(p => [p[0], p[1]]), next: () => G.card && nextLevel(), askLater: () => { if (G.ask) { G.ask = null; nextLevel(); } }, cardBtn: () => G.card && G.card.btn,
     pause: (v) => { G.paused = v; }, advance: (ms) => { G.manual = ms / 1000; },
     fpsStart: () => { G.fps = []; G.fpsOn = true; }, fpsStop: () => { G.fpsOn = false; const a = G.fps.slice(2); const avg = a.reduce((x, y) => x + y, 0) / a.length; const sorted = a.slice().sort((x, y) => x - y); return { frames: a.length, avgFps: 1 / avg, p95ms: sorted[Math.floor(a.length * 0.95)] * 1000, worstMs: sorted[a.length - 1] * 1000 }; },
-    goto: (n) => startLevel(n - 1),
+    goto: (n) => startLevel(n - 1), snapshot: () => snapshotFabric(), menu: () => openMenu(), menuBox: () => menuBox(), audio: () => A.state,
     gift: () => { G.card = null; startGift(); }, giftReady: () => !!GIFT, note: () => openNote(), noteState: () => G.note && { done: G.note.done, chars: G.note.chars },
     // предпросмотр готовой вещи без игры (для галерей/шкафа): ? → первый клубок, A/B → A
     ward: () => openWard(), addItems: (n) => { for (let i = 0; i < n; i++) { const d = LEVELS[i]; G.items.push({ lv: d.id, item: d.item, cw: d.cw, codes: null }); } },

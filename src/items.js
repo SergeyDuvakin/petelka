@@ -42,7 +42,11 @@
         const a2 = two ? getE(r + 1, c) : null, b2 = two ? getE(r + 1, c + 1) : null;
         const full = two && a2 && b2 && isFlat(r + 1, c) && isFlat(r + 1, c + 1);
         const top = full ? yB - 2 * h : yB - 1.02 * h;
-        ST.drawCablePair(ctx, cx, yB, s, h, P.yarn(a.code), P.yarn(b.code), [yB + (r === runStart ? 0.05 * h : 0), top]);
+        // косы справа от центра — зеркальные (как у вязальщиц: левый перекрёст слева, правый справа), центральная — как есть
+        const mir = 2 * (c + 1) > W && 2 * c + 1 !== W - 1;
+        if (mir) { ctx.save(); ctx.translate(2 * cx, 0); ctx.scale(-1, 1); }
+        ST.drawCablePair(ctx, cx, yB, s, h, P.yarn((mir ? b : a).code), P.yarn((mir ? a : b).code), [yB + (r === runStart ? 0.05 * h : 0), top]);
+        if (mir) ctx.restore();
       }
     }
   }
