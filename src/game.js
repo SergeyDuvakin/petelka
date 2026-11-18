@@ -41,17 +41,27 @@
     paintBg();
     const bw = Math.min(G.W - 70, 320), bh = 86;
     G.basket = S.makeBasket(bw, bh, G.dpr);
-    G.basket.x = (G.W - G.basket.W) / 2; G.basket.y = G.st + 124;
+    // вязание сверху, корзинка с клубками — внизу, в зоне большого пальца
+    G.basket.x = (G.W - G.basket.W) / 2; G.basket.y = G.H - G.sb - 112;
     G.rimY = G.basket.y + G.basket.rimY;
-    G.hintY = G.st + 316; G.ctrlY = G.st + 378;
-    G.yn = G.st + 452;
+    G.ctrlY = G.basket.y - 52; G.hintY = G.ctrlY - 54;
+    G.ynTop = G.st + 172; G.fabBottom = G.hintY - 14;
+    G.yn = G.ynTop;
     ST.clearAtlas();
     if (G.level) setupLevelGeometry();
   }
+  // спицы с полотном держатся у середины свободной области: пока изделие короткое — ниже, потом плавно поднимаются
+  function ynTarget(rows) { return G.ynTop + Math.max(0, (G.room - (rows + 2.4) * G.h) * 0.5); }
   function setupLevelGeometry() {
     const L = G.level; const W = L.W;
-    G.s = Math.min((G.W - 56) / W, 54); G.h = G.s * 0.78;
+    const room = G.fabBottom - G.ynTop;
+    G.s = Math.min((G.W - 56) / W, 54, room / (L.H + 1.9) / 0.78); G.h = G.s * 0.78;
     G.fx = (G.W - W * G.s) / 2;
+    // небольшое изделие опускается к центру свободной области, клубок на ленте — над спицами
+    G.room = room;
+    G.yn = ynTarget(G.vis && G.vis._L === L ? Math.min(G.vis.row, L.H) : 0);
+    G.hang = { ax: G.W - 76, ay: -8, len: G.yn - 70 + 8, r: 26 };
+    if (G.ynS) G.ynS.snap(G.yn); else G.ynS = new Spring(G.yn, 26, 0.9);
     const n = L.balls.length; const bw = G.basket.W - G.basket.pad * 2;
     G.r0 = Math.min(31, bw / n / 2 - 5);
     G.ballPos = L.balls.map((b, i) => [G.basket.x + G.basket.pad + bw * (i + 0.5) / n, G.rimY - G.r0 * 0.28]);
@@ -68,10 +78,11 @@
       row: 0, col: L.W - 1, st: [], cast: [], castCode,
       amounts: L.balls.map(b => b.amount), radius: L.balls.map(() => new Spring(G.r0, 160, 0.7)),
       angle: L.balls.map(() => 0), shake: L.balls.map(() => 0), glow: L.balls.map(() => 0),
-      seed, activeBall: 0, ropeFrom: null,
+      seed, activeBall: 0, swap: null, wave: null, bounce: L.balls.map(() => new Spring(0, 320, 0.32)),
+      sway: new Spring(0, 34, 0.16), spin: 0,
       Fy: new Spring(G.yn, 90, 0.78), xb: { from: G.fx + L.W * G.s, to: G.fx + L.W * G.s, t0: 0, dur: 0.001 },
       tip: { dx: 0, dy: 0 }, motifDone: false, motifGlow: null, cellPulse: 0, wrongCell: null,
-      needlesOut: 0, item: null,
+      needlesOut: 0, item: null, _L: L,
     };
     for (let r = 0; r < L.H; r++) G.vis.st.push(new Array(L.W).fill(null));
     for (let c = 0; c < L.W; c++) G.vis.cast.push({ code: castCode, seed: seed(-1, c) });
@@ -140,19 +151,21 @@
         it.D = durFor(pending);
         const entry = { code: it.code, seed: v.seed(it.row, it.col), t0: it.t0, D: it.D, anim: it };
         v.st[it.row][it.col] = entry; v.row = it.row; v.col = it.col;
-        if (v.activeBall !== it.ball) { v.ropeFrom = { from: ballTop(v.activeBall), t0: G.now }; v.activeBall = it.ball; }
+        kickBall(it.ball);
+        if (v.activeBall !== it.ball) { passColor(v.activeBall, it.ball); v.activeBall = it.ball; }
         G.gate = it.t0 + it.D * 0.79;
         it.flags = {};
       } else if (it.type === 'wrong') {
         it.D = 0.26; it.total = 0.62;
-        if (v.activeBall !== it.ball) { v.ropeFrom = { from: ballTop(v.activeBall), t0: G.now }; it.prevBall = v.activeBall; v.activeBall = it.ball; }
+        kickBall(it.ball);
+        if (v.activeBall !== it.ball) { passColor(v.activeBall, it.ball); it.prevBall = v.activeBall; v.activeBall = it.ball; }
         v.wrongCell = { c: it.col, t0: G.now }; it.flags = {};
         G.gate = it.t0 + 0.42;
       } else if (it.type === 'empty') {
         v.shake[it.ball] = 1; A.empty(); G.gate = G.now;
         continue;
       } else if (it.type === 'rowDone') {
-        v.Fy.set(G.yn + (it.row + 1) * G.h);
+        v.Fy.set(G.yn + (it.row + 1) * G.h); if (!it.itemDone) G.ynS.set(ynTarget(it.row + 1));
         setXb(G.fx + G.level.W * G.s, 0.42, G.now + 0.12);
         A.rowDone();
         if (!it.itemDone) banner('Ряд готов', 1.3);
@@ -162,7 +175,7 @@
       } else if (it.type === 'item') {
         v.item = { t0: G.now + 0.45 }; G.gate = 1e12;
       } else if (it.type === 'rowUndo') {
-        v.Fy.set(G.yn + it.row * G.h);
+        v.Fy.set(G.yn + it.row * G.h); G.ynS.set(ynTarget(it.row));
         setXb(G.fx, 0.38);
         v.row = it.row; G.gate = it.t0 + 0.4;
       } else if (it.type === 'unknit') {
@@ -174,6 +187,20 @@
       }
       G.active.push(it);
     }
+  }
+  // нажатый клубок подпрыгивает; если цвет другой — искорка летит по дуге вверх к клубку на ленте,
+  // тот мягко сменяется новым, а новый цвет «стекает» по нити к спице
+  function kickBall(i) { G.vis.bounce[i].vel -= 120; }
+  function passColor(from, to, quiet) {
+    const v = G.vis; const code = G.level.balls[to].code, old = G.level.balls[from].code;
+    v.swap = { from: old, to: code, t0: G.now };
+    v.wave = { from: old, t0: G.now + (quiet ? 0 : 0.05) };
+    v.sway.vel += (to > from ? 1 : -1) * 1.6;
+    if (!quiet) { const p = ballTop(to); (G.comets || (G.comets = [])).push({ x0: p[0], y0: p[1] - 6, t0: G.now, code }); }
+  }
+  function hangPos() {
+    const h = G.hang, v = G.vis; const a = v ? v.sway.v : 0;
+    return { x: h.ax + Math.sin(a) * h.len, y: h.ay + Math.cos(a) * h.len, a };
   }
   function ballTop(i) { const p = G.ballPos[i]; return [p[0], p[1] - G.vis.radius[i].v * 0.15]; }
 
@@ -200,7 +227,7 @@
         else if (p < 0.36) { tipDx = -0.5 * s; tipDy = 0.1 * G.h; wrap = (p - 0.15) / 0.21; }
         else { const k = clamp((t - it.D * 0.5) / 0.3, 0, 1); tipDx = lerp(-0.5 * s, 0, E.inOutCubic(k)); tipDy = lerp(0.1 * G.h, 0, k); }
         if (p >= 0.36 && !f.snd) { f.snd = 1; A.wrong(); v.shake[it.ball] = 0.6; }
-        if (t >= it.total && !f.fin) { f.fin = 1; if (it.prevBall != null) { v.ropeFrom = { from: ballTop(v.activeBall), t0: G.now }; v.activeBall = it.prevBall; } }
+        if (t >= it.total && !f.fin) { f.fin = 1; if (it.prevBall != null) { passColor(v.activeBall, it.prevBall, true); v.activeBall = it.prevBall; } }
         it.done = t >= it.total + 0.05;
       } else if (it.type === 'unknit') {
         if (t > 0.2) { if (G.vis.st[it.row][it.col] && G.vis.st[it.row][it.col].unknitT0) G.vis.st[it.row][it.col] = null; it.done = true; }
@@ -238,6 +265,7 @@
   function step(dt) {
     G.now += dt; const v = G.vis; if (!v) return;
     pump(); updateActive();
+    { const ny = G.ynS.step(dt); const d = ny - G.yn; G.yn = ny; v.Fy.v += d; v.Fy.t += d; G.hang.len = G.yn - 70 + 8; }
     v.Fy.step(dt);
     for (let i = 0; i < G.level.balls.length; i++) {
       v.radius[i].set(ballR(i)); v.radius[i].step(dt);
@@ -256,9 +284,16 @@
     if (G.fadeT != null) { G.fadeT += dt; const k = G.fadeT / 0.5; G.fade = k < 0.5 ? E.inOutSine(k * 2) : 1 - E.inOutSine((k - 0.5) * 2); if (k >= 0.5 && !G.fadeSwapped) { G.fadeSwapped = true; G.fadeSwap(); } if (k >= 1) { G.fadeT = null; G.fade = 0; } }
     // нить
     const end = yarnEnd();
-    let start = ballTop(v.activeBall);
-    if (v.ropeFrom) { const k = clamp((G.now - v.ropeFrom.t0) / 0.25, 0, 1); start = [lerp(v.ropeFrom.from[0], start[0], E.outCubic(k)), lerp(v.ropeFrom.from[1], start[1], E.outCubic(k))]; if (k >= 1) v.ropeFrom = null; }
-    G.rope.step(dt || 0.0001, start, end, 0.07);
+    // клубок на ленте: нить тянет его к спице, при каждом обороте нити — лёгкий рывок
+    const tip = rightTip();
+    v.sway.set(clamp((tip[0] - G.hang.ax) / 900, -0.22, 0.22));
+    if (v.wrap != null && !v._tug) { v._tug = 1; v.sway.vel += (tip[0] < G.hang.ax ? -1 : 1) * 0.5; v.spin += 0.5; }
+    if (v.wrap == null) v._tug = 0;
+    v.sway.step(dt); v.bounce.forEach(b => b.step(dt));
+    const hp = hangPos(); const hr = hangR();
+    const start = [hp.x - hr * 0.35, hp.y + hr * 0.82];
+    G.rope.step(dt || 0.0001, start, end, 0.05);
+    if (G.comets) G.comets = G.comets.filter(c => G.now - c.t0 < 0.34);
   }
   function rightTip() { const v = G.vis; return [xbNow() - 0.1 * G.s + v.tip.dx - v.needlesOut * 260, G.yn + v.tip.dy]; }
   function yarnEnd() {
@@ -274,12 +309,11 @@
     if (!G.vis) return;
     drawTop();
     drawBasket();
-    const ropeOn = G.rope && G.vis.item == null; const ry = Y[G.level.balls[G.vis.activeBall].code], rw = Math.max(2.8, G.s * 0.08);
-    if (ropeOn) G.rope.draw(ctx, ry, rw, 0, 14);
     drawHintBar();
     drawControls();
     drawFabricAndNeedles();
-    if (ropeOn) G.rope.draw(ctx, ry, rw, 13, 17);
+    drawHanging();
+    drawComets();
     G.particles.draw(ctx);
     drawBanners();
     drawGhost();
@@ -334,6 +368,92 @@
     if (G.wardrobeCount > 0) { ctx.beginPath(); ctx.arc(wx + 15, wy - 14, 9, 0, 6.283); ctx.fillStyle = '#EE9BB2'; ctx.fill(); text(String(G.wardrobeCount), wx + 15, wy - 13.5, 11, '#fff', 'Nunito', 800); }
   }
 
+  // ---------- клубок на атласной ленте (источник рабочей нити сверху) ----------
+  function hangR() { const v = G.vis, L = G.level, i = v.activeBall; const m = L.balls[i].max || 1; return G.hang.r * (0.8 + 0.2 * Math.sqrt(Math.max(0, v.amounts[i]) / m)); }
+  function hangBall(code) { const hb = G.hangBalls || (G.hangBalls = {}); return hb[code] || (hb[code] = new S.Ball(code, 41 + code.charCodeAt(0))); }
+  function drawRibbon(x0, y0, x1, y1, w) {
+    const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy), nx = -dy / L, ny = dx / L;
+    const sag = 3 * Math.sin(G.now * 0.9);
+    const mx = (x0 + x1) / 2 + nx * sag, my = (y0 + y1) / 2 + ny * sag;
+    ctx.save(); ctx.lineCap = 'butt';
+    const path = () => { ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(mx, my, x1, y1); };
+    ctx.translate(2, 3); path(); ctx.strokeStyle = 'rgba(120,60,80,0.13)'; ctx.lineWidth = w; ctx.stroke(); ctx.translate(-2, -3);
+    path(); ctx.strokeStyle = '#D98AA2'; ctx.lineWidth = w; ctx.stroke();
+    path(); ctx.strokeStyle = '#F3B5C6'; ctx.lineWidth = w * 0.72; ctx.stroke();
+    // атласный блик и перекрут ленты
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.setLineDash([L * 0.22, L * 0.12]); ctx.lineDashOffset = -G.now * 4;
+    path(); ctx.strokeStyle = 'rgba(255,236,242,0.45)'; ctx.lineWidth = w * 0.22; ctx.stroke();
+    ctx.restore();
+  }
+  function drawBow(x, y, a) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(a);
+    const loop = (sx) => {
+      ctx.save(); ctx.scale(sx, 1);
+      const g = ctx.createLinearGradient(0, -6, 12, 6); g.addColorStop(0, '#F7C3D1'); g.addColorStop(1, '#DE8DA5');
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.bezierCurveTo(5, -11, 15, -9, 13, -2); ctx.bezierCurveTo(12, 4, 5, 3, 0, 0);
+      ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = 'rgba(190,100,128,0.6)'; ctx.lineWidth = 0.8; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(2, -1); ctx.bezierCurveTo(6, -7, 11, -6, 11, -3); ctx.strokeStyle = 'rgba(255,240,245,0.7)'; ctx.lineWidth = 1; ctx.stroke();
+      // хвостик
+      ctx.beginPath(); ctx.moveTo(0, 1); ctx.quadraticCurveTo(4, 7, 7, 12); ctx.lineTo(4, 12.5); ctx.quadraticCurveTo(2, 7, -1, 2); ctx.fillStyle = '#E79AB0'; ctx.fill();
+      ctx.restore();
+    };
+    loop(1); loop(-1);
+    ctx.beginPath(); ctx.ellipse(0, 0, 3.6, 3, 0, 0, 6.283); ctx.fillStyle = '#E395AB'; ctx.fill(); ctx.strokeStyle = 'rgba(190,100,128,0.7)'; ctx.lineWidth = 0.8; ctx.stroke();
+    ctx.restore();
+  }
+  function drawHanging() {
+    const v = G.vis, L = G.level; if (!v || (v.item && v.item.snap)) { if (v && v.item) drawHangOnly(); return; }
+    // нить: старый цвет, поверх — новый, «стекающий» от клубка к спице
+    const ry = Y[L.balls[v.activeBall].code], rw = Math.max(2.8, G.s * 0.08), n = G.rope.n;
+    if (v.wave) {
+      const k = clamp((G.now - v.wave.t0) / 0.16, 0, 1); const m = Math.round(k * (n - 1));
+      G.rope.draw(ctx, Y[v.wave.from], rw);
+      if (m >= 1) G.rope.draw(ctx, ry, rw, 0, m, false);
+      const p = G.rope.p[Math.min(n - 1, m)];
+      if (k < 1) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const g = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], 9); g.addColorStop(0, 'rgba(255,245,240,0.8)'); g.addColorStop(1, 'rgba(255,245,240,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p[0], p[1], 9, 0, 6.283); ctx.fill(); ctx.restore(); }
+      if (k >= 1) v.wave = null;
+    } else G.rope.draw(ctx, ry, rw);
+    drawHangOnly();
+  }
+  function drawHangOnly() {
+    const v = G.vis, L = G.level; const hp = hangPos(), r = hangR();
+    const code = L.balls[v.activeBall].code;
+    const sw = v.swap; let k = 1; if (sw) { k = clamp((G.now - sw.t0) / 0.34, 0, 1); if (k >= 1) v.swap = null; }
+    const ang = v.spin + v.angle[v.activeBall];
+    // мягкая тень клубка на фоне
+    ctx.save(); ctx.fillStyle = 'rgba(120,60,80,0.10)'; ctx.beginPath(); ctx.ellipse(hp.x + 5, hp.y + 8, r * 0.95, r * 0.9, 0, 0, 6.283); ctx.fill(); ctx.restore();
+    if (sw && k < 1) {
+      const ko = E.inCubic(Math.min(1, k * 1.6)); // прежний клубок уплывает вверх-в сторону и тает
+      ctx.save(); ctx.globalAlpha = 1 - ko; hangBall(sw.from).draw(ctx, hp.x + ko * 16, hp.y - ko * 10, r * (1 - 0.45 * ko), ang, 0, G.dpr, G.now); ctx.restore();
+      const kn = E.outBack(clamp((k - 0.15) / 0.85, 0, 1));
+      if (kn > 0.02) {
+        const g = ctx.createRadialGradient(hp.x, hp.y, r * 0.5, hp.x, hp.y, r * 2); g.addColorStop(0, rgb(Y[code].cLight, 0.55 * (1 - k))); g.addColorStop(1, rgb(Y[code].cLight, 0));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(hp.x, hp.y, r * 2, 0, 6.283); ctx.fill();
+        hangBall(code).draw(ctx, hp.x, hp.y, r * Math.max(0.05, kn), ang, 0, G.dpr, G.now);
+      }
+    } else hangBall(code).draw(ctx, hp.x, hp.y, r, ang, 0, G.dpr, G.now);
+    drawRibbon(G.hang.ax, G.hang.ay, hp.x, hp.y - r * 0.92, 6.5);
+    ctx.save(); ctx.translate(hp.x, hp.y - r * 0.95); ctx.scale(r / 20, r / 20); drawBow(0, 0, hp.a * 0.6); ctx.restore();
+  }
+  function drawComets() {
+    if (!G.comets || !G.comets.length) return;
+    const hp = hangPos();
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (const c of G.comets) {
+      const T = 0.3; const tt = (G.now - c.t0) / T; const col = Y[c.code];
+      const at = (u) => { u = clamp(u, 0, 1); const e = E.inOutSine(u); const cx = G.W - 8, cy = (c.y0 + hp.y) / 2; const q = 1 - e; return [q * q * c.x0 + 2 * q * e * cx + e * e * hp.x, q * q * c.y0 + 2 * q * e * cy + e * e * hp.y]; };
+      for (let j = 7; j >= 0; j--) {
+        const u = tt - j * 0.045; if (u < 0 || u > 1) continue; const [x, y] = at(u); const rr = (6 - j * 0.6) * (u > 0.9 ? (1 - u) * 10 : 1);
+        if (rr <= 0.3) continue;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, rr * 1.8); g.addColorStop(0, `rgba(255,250,246,${0.85 - j * 0.1})`); g.addColorStop(0.4, rgb(col.cLight, 0.6 - j * 0.07)); g.addColorStop(1, rgb(col.cBase, 0));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rr * 1.8, 0, 6.283); ctx.fill();
+      }
+      if (tt >= 0.92 && !c.burst) { c.burst = 1; G.particles.burst(hp.x, hp.y, 7, { col: [255, 236, 242], speed: 45, life: 0.6, r: 1.6, g: 20, star: true }); }
+    }
+    ctx.restore();
+  }
+
   function drawBasket() {
     const b = G.basket, v = G.vis, L = G.level;
     ctx.drawImage(b.back, b.x, b.y, b.W, b.H);
@@ -341,7 +461,7 @@
       const [x0, y0] = G.ballPos[i]; const r = v.radius[i].v;
       const sh = v.shake[i] > 0 ? Math.sin(G.now * 50) * 4 * v.shake[i] : 0;
       const bob = Math.sin(G.now * 1.3 + i * 1.7) * 0.6;
-      const cy = y0 + (G.r0 - r) * 0.55 + bob;
+      const cy = y0 + (G.r0 - r) * 0.55 + bob + Math.min(0, v.bounce[i].v) * 0.12;
       // свечение подсказки — мягкий ореол за клубком
       if (v.glow[i] > 0.01) {
         const pulse = 0.65 + 0.35 * Math.sin(G.now * 4);

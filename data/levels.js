@@ -23,7 +23,11 @@ window.PETELKA_LEVELS = [
    "P P P P P P",
    "K K K K K K"
   ],
-  "motif": null,
+  "motif": {
+   "id": "stripes",
+   "color": "P",
+   "bg": "K"
+  },
   "newMechanic": "тап по клубку = петля; ряд готов",
   "intendedTrap": "нет",
   "targetTaps": 24
@@ -31,141 +35,160 @@ window.PETELKA_LEVELS = [
  {
   "id": 2,
   "item": "scarf",
-  "name": "Шарф «Полоска»",
+  "name": "Шарф «Зигзаг»",
   "theme": "pastel",
   "width": 6,
-  "height": 5,
+  "height": 8,
   "balls": [
    {
     "color": "K",
-    "amount": 13
+    "amount": 37
    },
    {
     "color": "L",
     "amount": 12
-   },
-   {
-    "color": "P",
-    "amount": 6
    }
   ],
   "rows": [
-   "L L L L L L",
-   "K ? ? ? ? K",
-   "P P P P P P",
-   "K ? K K ? K",
-   "L L L L L L"
+   "? ? ? ? ? ?",
+   "K K K K K K",
+   "K K L L K K",
+   "K L K K L K",
+   "L K K K K L",
+   "K K L L K K",
+   "K L K K L K",
+   "L K K K K L"
   ],
-  "motif": null,
-  "newMechanic": "свободная петля «?»",
-  "intendedTrap": "потратить Лаванду на «?» — в верхнем ряду не хватит",
-  "targetTaps": 30
+  "motif": {
+   "id": "zigzag",
+   "color": "L",
+   "bg": "K"
+  },
+  "newMechanic": "свободная петля «?» (только в нижней кайме, вдали от узора)",
+  "intendedTrap": "потратить Лаванду на «?» в кайме — на верхний зигзаг не хватит",
+  "targetTaps": 48
  },
  {
   "id": 3,
   "item": "scarf",
-  "name": "Шарф «Три цвета»",
+  "name": "Шарф «Тюльпан»",
   "theme": "pastel",
-  "width": 6,
-  "height": 4,
+  "width": 7,
+  "height": 7,
   "balls": [
    {
     "color": "K",
-    "amount": 10
+    "amount": 29
    },
    {
     "color": "P",
-    "amount": 8
+    "amount": 16
    },
    {
     "color": "T",
-    "amount": 6
+    "amount": 4
    }
   ],
   "rows": [
-   "P P ? ? P P",
-   "T ? T T ? T",
-   "K K P P K K",
-   "? T ? ? T ?"
+   "? ? ? ? ? ? ?",
+   "K T K T K T K",
+   "K K K T K K K",
+   "K K P P P K K",
+   "K P P P P P K",
+   "K P P P P P K",
+   "K P K P K P K"
   ],
-  "motif": null,
+  "motif": {
+   "id": "tulip",
+   "color": "P",
+   "bg": "K"
+  },
   "newMechanic": "нехватка цвета",
-  "intendedTrap": "Мята на «?» в рядах 1–2",
-  "targetTaps": 24
+  "intendedTrap": "Мята на «?» в кайме — тюльпан останется без листьев",
+  "targetTaps": 49
  },
  {
   "id": 4,
   "item": "scarf",
-  "name": "Шарф с блестящей каймой",
+  "name": "Шарф «Звёздочка» с блестящей каймой",
   "theme": "pastel",
-  "width": 8,
-  "height": 6,
+  "width": 7,
+  "height": 8,
   "balls": [
    {
     "color": "K",
-    "amount": 14
+    "amount": 31
    },
    {
     "color": "P",
-    "amount": 10
+    "amount": 11
    },
    {
     "color": "G",
-    "amount": 24
+    "amount": 14
    }
   ],
   "rows": [
-   "G G G G G G G G",
-   "G ? P ? ? P ? G",
-   "G P ? ? ? ? P G",
-   "G ? P ? ? P ? G",
-   "G ? ? P P ? ? G",
-   "G G G G G G G G"
+   "G G G G G G G",
+   "? ? ? ? ? ? ?",
+   "K K K K K K K",
+   "K K P K P K K",
+   "K K P P P K K",
+   "K P P P P P K",
+   "K K K P K K K",
+   "G G G G G G G"
   ],
   "motif": {
-   "id": "rhomb",
-   "color": "P"
+   "id": "star",
+   "color": "P",
+   "bg": "K"
   },
-  "newMechanic": "люрекс (пряжа с блёстками) + ромб; слабина 0",
-  "intendedTrap": "Люрекс на «?»: блестящая кайма верхнего ряда не довяжется",
-  "targetTaps": 48
+  "newMechanic": "люрекс (пряжа с блёстками) + первый мотив; слабина 0",
+  "intendedTrap": "Люрекс на «?»: верхняя блестящая кайма не довяжется",
+  "targetTaps": 56
  },
  {
   "id": 5,
   "item": "mitten",
-  "name": "Варежка «Полоски»",
+  "name": "Варежка «Ёлочка»",
   "theme": "nordic",
   "width": 7,
-  "height": 6,
+  "height": 8,
   "balls": [
    {
     "color": "K",
-    "amount": 18
+    "amount": 25
    },
    {
     "color": "C",
     "amount": 14
    },
    {
-    "color": "F",
-    "amount": 7
+    "color": "H",
+    "amount": 10
    },
    {
-    "color": "H",
-    "amount": 3
+    "color": "F",
+    "amount": 7
    }
   ],
   "rows": [
    "C C C C C C C",
-   "? K K ? K K ?",
+   "? ? ? ? ? ? ?",
    "F F F F F F F",
-   "? ? H H H ? ?",
-   "C C C C C C C",
-   "K K K K K K K"
+   "K K K H K K K",
+   "K H H H H H K",
+   "K K H H H K K",
+   "K K K H K K K",
+   "C C C C C C C"
   ],
-  "motif": null,
+  "motif": {
+   "id": "tree",
+   "color": "H",
+   "bg": "K"
+  },
   "newMechanic": "4-й клубок",
-  "intendedTrap": "Клюква на «?»",
-  "targetTaps": 42
+  "intendedTrap": "Клюква на «?» в манжете — верхняя кайма без Клюквы",
+  "targetTaps": 56
  }
 ];

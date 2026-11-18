@@ -262,15 +262,15 @@
         }
       }
     }
-    draw(ctx, yarn, width, from = 0, to = this.n - 1) {
-      const pts = this.p.slice(from, to + 1);
+    draw(ctx, yarn, width, from = 0, to = this.n - 1, shadow = true) {
+      const pts = this.p.slice(from, to + 1); if (pts.length < 2) return;
       const path = () => {
         ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
         for (let i = 1; i < pts.length - 1; i++) { const mx = (pts[i][0] + pts[i + 1][0]) / 2, my = (pts[i][1] + pts[i + 1][1]) / 2; ctx.quadraticCurveTo(pts[i][0], pts[i][1], mx, my); }
         ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
       };
       ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.translate(1.5, 3); path(); ctx.strokeStyle = 'rgba(120,60,80,0.14)'; ctx.lineWidth = width * 1.1; ctx.stroke(); ctx.translate(-1.5, -3);
+      if (shadow) { ctx.translate(1.5, 3); path(); ctx.strokeStyle = 'rgba(120,60,80,0.14)'; ctx.lineWidth = width * 1.1; ctx.stroke(); ctx.translate(-1.5, -3); }
       path(); ctx.strokeStyle = rgb(yarn.cDark); ctx.lineWidth = width; ctx.stroke();
       ctx.strokeStyle = rgb(yarn.cBase); ctx.lineWidth = width * 0.7; ctx.stroke();
       ctx.setLineDash([width * 0.9, width * 1.1]); ctx.strokeStyle = rgb(yarn.cLight, 0.7); ctx.lineWidth = width * 0.3; ctx.stroke();
